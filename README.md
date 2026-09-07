@@ -48,12 +48,15 @@ Projeto12/
 │   ├── entrega_1/
 |   |   ├── backend/
 |   |   |   ├── src/
+|   |   |   ├── requirements.txt
 |   |   |   └── README.md
 |   |   ├── firmware/
-|   |   |   ├── sketch/
+|   |   |   ├── src/
+|   |   |   ├── platformio.ini
 |   |   |   └── README.md
 |   |   └── mobile/
-|   |   |   ├── src/
+|   |   |   ├── lib/
+|   |   |   ├── pubspec.yaml
 |   |   |   └── README.md
 │   └── entrega_2/
 |   |   ├── backend/
@@ -77,11 +80,17 @@ Execute o APK e siga as instruções de seu telefone.
 
 ## 💻 Configuração para Desenvolvimento
 
-### [Mobile]()
+### Entrega 1
 
-### [Backend]()
+  - [Backend](https://github.com/2026-2-NCC6/Projeto12/blob/project-setup/src/entrega_1/backend/README.md)
+  - [Mobile](https://github.com/2026-2-NCC6/Projeto12/blob/project-setup/src/entrega_1/mobile/README.md)
+  - [Firmware](https://github.com/2026-2-NCC6/Projeto12/blob/project-setup/src/entrega_1/firmware/README.md)
 
-### [Firmware]()
+### Entrega 2
+
+  - [Backend](https://github.com/2026-2-NCC6/Projeto12/blob/project-setup/src/entrega_2/backend/README.md)
+  - [Mobile](https://github.com/2026-2-NCC6/Projeto12/blob/project-setup/src/entrega_2/mobile/README.md)
+  - [Firmware](https://github.com/2026-2-NCC6/Projeto12/blob/project-setup/src/entrega_2/firmware/README.md)
 
 ## 📋 Licença/License
 

@@ -416,6 +416,14 @@ pyrightconfig.json
 pyvenv.cfg
 pip-selfcheck.json
 
+# Os padrões de venv acima (sem "/" inicial) também casam com qualquer pasta
+# chamada lib/ ou include/ no repo — o que engoliria o código-fonte Dart
+# (Flutter usa lib/) e o firmware (PlatformIO usa include/). Reincluídas abaixo.
+!src/entrega_1/mobile/lib/
+!src/entrega_1/mobile/lib/**
+!src/entrega_1/firmware/include/
+!src/entrega_1/firmware/include/**
+
 ### VisualStudioCode ###
 .vscode/*
 !.vscode/settings.json
