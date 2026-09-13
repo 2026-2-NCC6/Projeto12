@@ -21,6 +21,8 @@
 
 Projeto IoT focado em fornecer um sistema gamificado e interativo de treino de Tênis, em parceria com a Startup SmartTennis. Destinado a jogadores iniciantes e casuais, o projeto propôe um alvo que interage com usuário, integrado a um sistema mobile para registro de lances, métricas e telemetria.
 
+JORGE PASSOU AQUI
+
 ## 🛠 Estrutura de pastas
 
 ```text
