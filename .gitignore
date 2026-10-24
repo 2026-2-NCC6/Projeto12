@@ -423,6 +423,10 @@ pip-selfcheck.json
 !src/entrega_1/mobile/lib/**
 !src/entrega_1/firmware/include/
 !src/entrega_1/firmware/include/**
+!src/entrega_2/mobile/lib/
+!src/entrega_2/mobile/lib/**
+!src/entrega_2/firmware/include/
+!src/entrega_2/firmware/include/**
 
 ### VisualStudioCode ###
 .vscode/*
