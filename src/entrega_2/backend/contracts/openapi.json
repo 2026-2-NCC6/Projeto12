@@ -1,4 +1,4 @@
-  {
+{
   "openapi": "3.1.0",
   "info": {
     "title": "TOBIAS API",
@@ -11,6 +11,7 @@
           "autenticacao"
         ],
         "summary": "Cadastrar",
+        "description": "Cria uma conta. O papel e sempre jogador: nunca vem do cliente.",
         "operationId": "cadastrar_v1_auth_cadastro_post",
         "requestBody": {
           "content": {
@@ -52,6 +53,7 @@
           "autenticacao"
         ],
         "summary": "Login",
+        "description": "Confere as credenciais e devolve o token.\n\nA mensagem de erro e a mesma para e-mail inexistente e senha errada,\npara nao revelar quais e-mails estao cadastrados.",
         "operationId": "login_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -93,6 +95,7 @@
           "autenticacao"
         ],
         "summary": "Quem Sou Eu",
+        "description": "Devolve os dados de quem esta com o token.",
         "operationId": "quem_sou_eu_v1_auth_eu_get",
         "responses": {
           "200": {
@@ -144,14 +147,44 @@
             "maxLength": 72,
             "minLength": 8,
             "title": "Senha"
+          },
+          "nome": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Nome"
+          },
+          "apelido": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Apelido"
+          },
+          "cpf": {
+            "type": "string",
+            "title": "Cpf"
+          },
+          "data_nascimento": {
+            "type": "string",
+            "format": "date",
+            "title": "Data Nascimento"
+          },
+          "perfil": {
+            "$ref": "#/components/schemas/Perfil",
+            "default": "casual"
           }
         },
         "type": "object",
         "required": [
           "email",
-          "senha"
+          "senha",
+          "nome",
+          "apelido",
+          "cpf",
+          "data_nascimento"
         ],
-        "title": "CadastroEntrada"
+        "title": "CadastroEntrada",
+        "description": "Dados que o aplicativo envia para criar uma conta."
       },
       "HTTPValidationError": {
         "properties": {
@@ -185,6 +218,15 @@
         ],
         "title": "LoginEntrada"
       },
+      "Perfil": {
+        "type": "string",
+        "enum": [
+          "casual",
+          "iniciante",
+          "infantil"
+        ],
+        "title": "Perfil"
+      },
       "TokenSaida": {
         "properties": {
           "access_token": {
@@ -213,6 +255,17 @@
             "type": "string",
             "title": "Email"
           },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "apelido": {
+            "type": "string",
+            "title": "Apelido"
+          },
+          "perfil": {
+            "$ref": "#/components/schemas/Perfil"
+          },
           "papel": {
             "type": "string",
             "title": "Papel"
@@ -222,9 +275,13 @@
         "required": [
           "id",
           "email",
+          "nome",
+          "apelido",
+          "perfil",
           "papel"
         ],
-        "title": "UsuarioSaida"
+        "title": "UsuarioSaida",
+        "description": "O que a API devolve sobre um usuario.\n\nCPF e data de nascimento ficam de fora de proposito: sao guardados,\nmas nunca saem da API."
       },
       "ValidationError": {
         "properties": {

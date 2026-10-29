@@ -12,13 +12,24 @@ router = APIRouter(prefix="/v1/auth", tags=["autenticacao"])
 
 @router.post("/cadastro", response_model=UsuarioSaida, status_code=201)
 def cadastrar(dados: CadastroEntrada, db: Session = Depends(get_db)):
-    ja_existe = db.query(Usuario).filter(Usuario.email == dados.email).first()
-    if ja_existe:
+    """Cria uma conta. O papel e sempre jogador: nunca vem do cliente."""
+    if db.query(Usuario).filter(Usuario.email == dados.email).first():
         raise HTTPException(status_code=409, detail="E-mail ja cadastrado")
+
+    if db.query(Usuario).filter(Usuario.cpf == dados.cpf).first():
+        raise HTTPException(status_code=409, detail="CPF ja cadastrado")
+
+    if db.query(Usuario).filter(Usuario.apelido == dados.apelido).first():
+        raise HTTPException(status_code=409, detail="Apelido ja em uso")
 
     usuario = Usuario(
         email=dados.email,
         senha_hash=gerar_hash(dados.senha),
+        nome=dados.nome,
+        apelido=dados.apelido,
+        cpf=dados.cpf,
+        data_nascimento=dados.data_nascimento,
+        perfil=dados.perfil,
         papel=Papel.jogador,
     )
     db.add(usuario)
@@ -29,10 +40,18 @@ def cadastrar(dados: CadastroEntrada, db: Session = Depends(get_db)):
 
 @router.post("/login", response_model=TokenSaida)
 def login(dados: LoginEntrada, db: Session = Depends(get_db)):
+    """Confere as credenciais e devolve o token.
+
+    A mensagem de erro e a mesma para e-mail inexistente e senha errada,
+    para nao revelar quais e-mails estao cadastrados.
+    """
     usuario = db.query(Usuario).filter(Usuario.email == dados.email).first()
 
     if usuario is None or not conferir_senha(dados.senha, usuario.senha_hash):
-        raise HTTPException(status_code=401, detail="Credenciais invalidas")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Credenciais invalidas",
+        )
 
     token = criar_token(usuario.id, usuario.papel.value)
     return TokenSaida(access_token=token)
@@ -40,4 +59,5 @@ def login(dados: LoginEntrada, db: Session = Depends(get_db)):
 
 @router.get("/eu", response_model=UsuarioSaida)
 def quem_sou_eu(usuario: Usuario = Depends(usuario_atual)):
+    """Devolve os dados de quem esta com o token."""
     return usuario
