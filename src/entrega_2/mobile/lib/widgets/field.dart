@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
+import '../theme/app_icons.dart';
 import '../theme/app_text.dart';
 import '../theme/app_tokens.dart';
 
@@ -54,6 +55,9 @@ class _AppFieldState extends State<AppField> {
   TextEditingController get _controller => widget.controller ?? _ownController!;
   final _focus = FocusNode();
 
+  /// Campos de senha começam ocultos; o olho à direita alterna.
+  var _oculto = true;
+
   @override
   void initState() {
     super.initState();
@@ -95,7 +99,7 @@ class _AppFieldState extends State<AppField> {
               child: TextField(
                 controller: _controller,
                 focusNode: _focus,
-                obscureText: widget.obscure,
+                obscureText: widget.obscure && _oculto,
                 obscuringCharacter: '•',
                 keyboardType: widget.keyboardType,
                 inputFormatters: widget.inputFormatters,
@@ -112,6 +116,20 @@ class _AppFieldState extends State<AppField> {
                 ),
               ),
             ),
+            if (widget.obscure)
+              Semantics(
+                button: true,
+                label: _oculto ? 'Mostrar senha' : 'Ocultar senha',
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _oculto = !_oculto),
+                  child: Icon(
+                    _oculto ? AppIcons.eye : AppIcons.eyeOff,
+                    size: 20,
+                    color: AppColors.iconDefault,
+                  ),
+                ),
+              ),
           ],
         ),
       ),

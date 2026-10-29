@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock_data.dart';
+import '../../data/api_client.dart';
+import '../../data/auth_store.dart';
+import '../../data/auth_validacao.dart';
 import '../../router.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
@@ -13,8 +15,67 @@ import '../../widgets/field.dart';
 import '../../widgets/layout.dart';
 
 /// 1.1 Login (13:179).
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _email = TextEditingController();
+  final _senha = TextEditingController();
+  final _api = ApiClient();
+
+  /// Mensagens abaixo de cada campo: validação local ou, na senha, o erro
+  /// devolvido pela API.
+  String? _erroEmail;
+  String? _erroSenha;
+
+  /// 401: a API não diz qual campo está errado, então os dois ficam com
+  /// borda de erro (a mensagem continua só abaixo da senha).
+  var _credenciaisInvalidas = false;
+  var _enviando = false;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _senha.dispose();
+    super.dispose();
+  }
+
+  /// Valida localmente; se tudo estiver certo, faz login na API, salva o
+  /// token e segue para o pareamento.
+  Future<void> _entrar() async {
+    if (_enviando) return;
+    final email = _email.text.trim();
+    final senha = _senha.text;
+    final erroEmail = validarEmail(email);
+    final erroSenha = validarSenhaLogin(senha);
+    setState(() {
+      _erroEmail = erroEmail;
+      _erroSenha = erroSenha;
+      _credenciaisInvalidas = false;
+    });
+    if (erroEmail != null || erroSenha != null) return;
+
+    setState(() => _enviando = true);
+    try {
+      final token = await _api.login(email, senha);
+      await AuthStore.salvarToken(token);
+      if (!mounted) return;
+      context.push(Routes.pareamento);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _erroSenha = e.mensagem;
+          _credenciaisInvalidas = e.statusCode == 401;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,14 +137,18 @@ class LoginScreen extends StatelessWidget {
                       ),
                       AppField(
                         label: 'E-mail',
-                        initialValue: Mock.user.email,
+                        controller: _email,
                         leadingIcon: AppIcons.mail,
                         keyboardType: TextInputType.emailAddress,
+                        error: _erroEmail != null || _credenciaisInvalidas,
+                        helper: _erroEmail,
                       ),
-                      const AppField(
+                      AppField(
                         label: 'Senha',
-                        initialValue: Mock.senha,
+                        controller: _senha,
                         obscure: true,
+                        error: _erroSenha != null,
+                        helper: _erroSenha,
                       ),
                       Align(
                         alignment: Alignment.centerRight,
@@ -91,7 +156,7 @@ class LoginScreen extends StatelessWidget {
                       ),
                       AppButton(
                         'Entrar',
-                        onPressed: () => context.push(Routes.pareamento),
+                        onPressed: _entrar,
                       ),
                       const Spacer(),
                       Row(
