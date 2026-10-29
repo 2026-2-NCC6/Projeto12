@@ -26,6 +26,7 @@ abstract final class AppIcons {
   static const calendar = Icons.calendar_today_outlined;
   static const bell = Icons.notifications_none_rounded;
   static const eye = Icons.visibility_outlined;
+  static const eyeOff = Icons.visibility_off_outlined;
   static const chevronRight = Icons.chevron_right_rounded;
   static const logOut = Icons.logout_rounded;
   static const cloudUpload = Icons.cloud_upload_outlined;

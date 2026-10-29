@@ -195,7 +195,8 @@ void main() {
     await _abrir(tester, Routes.login);
     expect(find.text('TOBIAS'), findsOneWidget);
 
-    await _tocar(tester, 'Entrar', botao: true);
+    // "Entrar" agora chama a API real; o fluxo segue a partir do pareamento.
+    await _abrir(tester, Routes.pareamento);
     expect(find.text('Procurando o TOBIAS…'), findsOneWidget);
 
     await _tocar(tester, 'Conectar ao TOBIAS-01');
