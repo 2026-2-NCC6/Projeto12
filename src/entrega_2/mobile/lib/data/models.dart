@@ -26,6 +26,8 @@ class Drill {
     required this.intervaloS,
     required this.nivel,
     this.origem,
+    this.intervaloMs,
+    this.falasTobias,
   });
 
   final String id;
@@ -39,10 +41,20 @@ class Drill {
 
   /// Intervalo entre os lances, em segundos.
   final int intervaloS;
+
+  /// Intervalo exato em milissegundos, quando o treino vem da API. Os dados
+  /// de exemplo não preenchem e usam só [intervaloS].
+  final int? intervaloMs;
+
+  /// "Falas do TOBIAS" ligadas, quando o treino vem da API.
+  final bool? falasTobias;
   final Nivel nivel;
 
-  /// Tempo da sessão = lances × intervalo entre os lances, em segundos.
-  int get duracaoS => lances * intervaloS;
+  /// Intervalo exato em ms: o da API ou, nos dados de exemplo, [intervaloS].
+  int get intervaloExatoMs => intervaloMs ?? intervaloS * 1000;
+
+  /// Tempo da sessão = lances × intervalo entre os lances, em milissegundos.
+  int get duracaoMs => lances * intervaloExatoMs;
 }
 
 class Session {
