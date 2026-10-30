@@ -45,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   /// Valida localmente; se tudo estiver certo, faz login na API, salva o
-  /// token e segue para o pareamento.
+  /// token e o papel do usuário e segue para o pareamento.
   Future<void> _entrar() async {
     if (_enviando) return;
     final email = _email.text.trim();
@@ -62,7 +62,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _enviando = true);
     try {
       final token = await _api.login(email, senha);
+      // O papel é buscado uma vez aqui e guardado com o token; as telas
+      // leem do AuthStore em vez de chamar /eu de novo.
+      final usuario = await _api.eu(token);
       await AuthStore.salvarToken(token);
+      await AuthStore.salvarPapel(usuario.papel);
       if (!mounted) return;
       context.push(Routes.pareamento);
     } on ApiException catch (e) {

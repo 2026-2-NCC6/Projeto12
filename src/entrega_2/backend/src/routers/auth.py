@@ -16,9 +16,6 @@ def cadastrar(dados: CadastroEntrada, db: Session = Depends(get_db)):
     if db.query(Usuario).filter(Usuario.email == dados.email).first():
         raise HTTPException(status_code=409, detail="E-mail ja cadastrado")
 
-    if db.query(Usuario).filter(Usuario.cpf == dados.cpf).first():
-        raise HTTPException(status_code=409, detail="CPF ja cadastrado")
-
     if db.query(Usuario).filter(Usuario.apelido == dados.apelido).first():
         raise HTTPException(status_code=409, detail="Apelido ja em uso")
 
@@ -27,7 +24,6 @@ def cadastrar(dados: CadastroEntrada, db: Session = Depends(get_db)):
         senha_hash=gerar_hash(dados.senha),
         nome=dados.nome,
         apelido=dados.apelido,
-        cpf=dados.cpf,
         data_nascimento=dados.data_nascimento,
         perfil=dados.perfil,
         papel=Papel.jogador,

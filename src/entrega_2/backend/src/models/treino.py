@@ -35,6 +35,9 @@ class Treino(Base):
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    apagado_em: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), index=True
+    )
 
 
 class TreinoVersao(Base):
