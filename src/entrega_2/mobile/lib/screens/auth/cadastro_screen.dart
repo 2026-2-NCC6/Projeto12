@@ -3,7 +3,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/api_client.dart';
 import '../../data/auth_validacao.dart';
-import '../../data/cpf.dart';
 import '../../data/format.dart';
 import '../../router.dart';
 import '../../theme/app_colors.dart';
@@ -42,10 +41,11 @@ class _CadastroScreenState extends State<CadastroScreen> {
   late var _perfil = widget.perfil;
   var _aceito = true;
 
-  // CPF do jogador (Casual/Iniciante) e do responsável (Modo infantil).
-  final _cpf = TextEditingController();
-  final _cpfResponsavel = TextEditingController();
-  var _tentouEnviar = false;
+  // Nome e apelido do jogador (no Modo infantil, os da criança).
+  final _nome = TextEditingController();
+  final _apelido = TextEditingController();
+  final _nomeInfantil = TextEditingController();
+  final _apelidoInfantil = TextEditingController();
 
   // Datas de nascimento: começam vazias (nulas) até o usuário escolher.
   DateTime? _nascimento;
@@ -61,22 +61,30 @@ class _CadastroScreenState extends State<CadastroScreen> {
 
   final _api = ApiClient();
 
-  /// Mensagens abaixo dos campos E-mail e Senha: validação local ou o erro
-  /// devolvido pela API.
+  /// Mensagens abaixo dos campos: validação local ou o erro devolvido pela
+  /// API.
+  String? _erroNome;
+  String? _erroApelido;
+  String? _erroNascimento;
   String? _erroEmail;
   String? _erroSenha;
   var _enviando = false;
 
   bool get _infantil => _perfil == PerfilJogador.infantil;
 
-  TextEditingController get _cpfAtual => _infantil ? _cpfResponsavel : _cpf;
+  TextEditingController get _nomeAtual => _infantil ? _nomeInfantil : _nome;
+  TextEditingController get _apelidoAtual =>
+      _infantil ? _apelidoInfantil : _apelido;
+  DateTime? get _nascimentoAtual => _infantil ? _nascimentoInfantil : _nascimento;
   TextEditingController get _emailAtual => _infantil ? _emailResponsavel : _email;
   TextEditingController get _senhaAtual => _infantil ? _senhaInfantil : _senha;
 
   @override
   void dispose() {
-    _cpf.dispose();
-    _cpfResponsavel.dispose();
+    _nome.dispose();
+    _apelido.dispose();
+    _nomeInfantil.dispose();
+    _apelidoInfantil.dispose();
     _nascimentoCtrl.dispose();
     _nascimentoInfantilCtrl.dispose();
     _email.dispose();
@@ -84,14 +92,6 @@ class _CadastroScreenState extends State<CadastroScreen> {
     _emailResponsavel.dispose();
     _senhaInfantil.dispose();
     super.dispose();
-  }
-
-  /// Erro quando o CPF tem 11 dígitos e não confere, ou quando se tentou
-  /// criar a conta com ele incompleto.
-  bool _cpfErro(TextEditingController c) {
-    final d = cpfDigitos(c.text);
-    if (d.isEmpty) return false;
-    return d.length < 11 ? _tentouEnviar : !cpfValido(d);
   }
 
   Future<void> _escolherNascimento() async {
@@ -109,6 +109,7 @@ class _CadastroScreenState extends State<CadastroScreen> {
     );
     if (data == null || !mounted) return;
     setState(() {
+      _erroNascimento = null;
       if (_infantil) {
         _nascimentoInfantil = data;
         _nascimentoInfantilCtrl.text = fmtData(data);
@@ -119,40 +120,70 @@ class _CadastroScreenState extends State<CadastroScreen> {
     });
   }
 
-  /// Valida tudo localmente (CPF, e-mail e senha, marcando todos os campos
-  /// inválidos de uma vez); se estiver certo, cadastra na API (só e-mail e
-  /// senha) e volta para o Login, onde o usuário entra com a conta criada.
+  /// Valida tudo localmente (marcando todos os campos inválidos de uma vez);
+  /// se estiver certo, cadastra na API e volta para o Login, onde o usuário
+  /// entra com a conta criada.
   Future<void> _criarConta() async {
     if (_enviando) return;
+    final nome = _nomeAtual.text.trim();
+    final apelido = _apelidoAtual.text.trim();
+    final nascimento = _nascimentoAtual;
     final email = _emailAtual.text.trim();
     final senha = _senhaAtual.text;
-    final erroEmail = validarEmail(email);
-    final erroSenha = validarSenhaCadastro(senha);
     setState(() {
-      _tentouEnviar = true;
-      _erroEmail = erroEmail;
-      _erroSenha = erroSenha;
+      _erroNome = validarNome(nome);
+      _erroApelido = validarApelido(apelido);
+      _erroNascimento = validarNascimento(nascimento);
+      _erroEmail = validarEmail(email);
+      _erroSenha = validarSenhaCadastro(senha);
     });
-    // Protótipo: CPF vazio passa (dados de exemplo); preenchido precisa ser válido.
-    if (_cpfErro(_cpfAtual) || erroEmail != null || erroSenha != null) return;
+    if (_erroNome != null ||
+        _erroApelido != null ||
+        _erroNascimento != null ||
+        _erroEmail != null ||
+        _erroSenha != null) {
+      return;
+    }
 
     setState(() => _enviando = true);
     try {
-      await _api.cadastro(email, senha);
+      await _api.cadastro(
+        email: email,
+        senha: senha,
+        nome: nome,
+        apelido: apelido,
+        // A tela mostra DD/MM/AAAA; a API espera AAAA-MM-DD.
+        dataNascimento: fmtDataIso(nascimento!),
+        // Os nomes do enum são os valores da API: casual, iniciante, infantil.
+        perfil: _perfil.name,
+      );
       if (!mounted) return;
       context.go(Routes.login);
     } on ApiException catch (e) {
       if (!mounted) return;
-      // 409 = e-mail já cadastrado: a mensagem vai para o campo E-mail.
       setState(() {
         if (e.statusCode == 409) {
-          _erroEmail = e.mensagem;
+          _mostrarConflito(e.mensagem);
         } else {
           _erroSenha = e.mensagem;
         }
       });
     } finally {
       if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  /// 409 do cadastro: o `detail` da API diz qual dado já está em uso
+  /// ("E-mail ja cadastrado" ou "Apelido ja em uso") e a mensagem vai para o
+  /// campo correspondente.
+  void _mostrarConflito(String detail) {
+    final d = detail.toLowerCase();
+    if (d.contains('apelido')) {
+      _erroApelido = 'Este apelido já está em uso. Escolha outro.';
+    } else if (d.contains('mail')) {
+      _erroEmail = 'Este e-mail já está cadastrado.';
+    } else {
+      _erroEmail = detail;
     }
   }
 
@@ -282,22 +313,6 @@ class _CadastroScreenState extends State<CadastroScreen> {
     );
   }
 
-  Widget _campoCpf(String label, TextEditingController c, String key) {
-    final erro = _cpfErro(c);
-    return AppField(
-      key: ValueKey(key),
-      label: label,
-      controller: c,
-      placeholder: '000.000.000-00',
-      leadingIcon: AppIcons.shield,
-      keyboardType: TextInputType.number,
-      inputFormatters: [CpfInputFormatter()],
-      error: erro,
-      helper: erro ? 'CPF inválido. Confira os números.' : null,
-      onChanged: (_) => setState(() {}),
-    );
-  }
-
   Widget _campoNascimento(TextEditingController c, String key) => AppField(
     key: ValueKey(key),
     label: 'Data de nascimento',
@@ -306,23 +321,30 @@ class _CadastroScreenState extends State<CadastroScreen> {
     leadingIcon: AppIcons.calendar,
     readOnly: true,
     onTap: _escolherNascimento,
+    error: _erroNascimento != null,
+    helper: _erroNascimento,
   );
 
   List<Widget> _campos() {
     if (_infantil) {
       return [
-        const AppField(
-          key: ValueKey('nome-jogador'),
+        AppField(
+          key: const ValueKey('nome-jogador'),
           label: 'Nome do jogador',
+          controller: _nomeInfantil,
           placeholder: 'Nome completo da criança',
+          error: _erroNome != null,
+          helper: _erroNome,
         ),
-        const AppField(
-          key: ValueKey('apelido-divertido'),
+        AppField(
+          key: const ValueKey('apelido-divertido'),
           label: 'Apelido divertido (sem nome real)',
+          controller: _apelidoInfantil,
           placeholder: 'Ex.: Raquete Veloz',
+          error: _erroApelido != null,
+          helper: _erroApelido,
         ),
         _campoNascimento(_nascimentoInfantilCtrl, 'nascimento-infantil'),
-        _campoCpf('CPF do responsável', _cpfResponsavel, 'cpf-responsavel'),
         AppField(
           key: const ValueKey('email-responsavel'),
           label: 'E-mail do responsável',
@@ -345,18 +367,23 @@ class _CadastroScreenState extends State<CadastroScreen> {
       ];
     }
     return [
-      const AppField(
-        key: ValueKey('nome'),
+      AppField(
+        key: const ValueKey('nome'),
         label: 'Nome completo',
+        controller: _nome,
         placeholder: 'Seu nome completo',
+        error: _erroNome != null,
+        helper: _erroNome,
       ),
-      const AppField(
-        key: ValueKey('apelido'),
+      AppField(
+        key: const ValueKey('apelido'),
         label: 'Apelido (aparece no ranking)',
+        controller: _apelido,
         placeholder: 'Como você quer aparecer',
         leadingIcon: AppIcons.star,
+        error: _erroApelido != null,
+        helper: _erroApelido,
       ),
-      _campoCpf('CPF', _cpf, 'cpf'),
       _campoNascimento(_nascimentoCtrl, 'nascimento'),
       AppField(
         key: const ValueKey('email'),

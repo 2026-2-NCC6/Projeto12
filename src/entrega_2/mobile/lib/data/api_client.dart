@@ -83,13 +83,29 @@ class ApiClient {
 
   Uri _uri(String caminho) => Uri.parse('${ApiConfig.baseUrl}$caminho');
 
-  /// POST /v1/auth/cadastro → 201 com o usuário criado.
-  Future<UsuarioApi> cadastro(String email, String senha) async {
+  /// POST /v1/auth/cadastro → 201 com o usuário criado. [dataNascimento]
+  /// vai como AAAA-MM-DD; [perfil] é casual, iniciante ou infantil.
+  /// 409 = e-mail ou apelido já usados (ver `detail`).
+  Future<UsuarioApi> cadastro({
+    required String email,
+    required String senha,
+    required String nome,
+    required String apelido,
+    required String dataNascimento,
+    String? perfil,
+  }) async {
     final json = await _enviar(
       () => _http.post(
         _uri('/v1/auth/cadastro'),
         headers: const {'Content-Type': 'application/json'},
-        body: jsonEncode({'email': email, 'senha': senha}),
+        body: jsonEncode({
+          'email': email,
+          'senha': senha,
+          'nome': nome,
+          'apelido': apelido,
+          'data_nascimento': dataNascimento,
+          if (perfil != null) 'perfil': perfil,
+        }),
       ),
     );
     return UsuarioApi.fromJson(json);

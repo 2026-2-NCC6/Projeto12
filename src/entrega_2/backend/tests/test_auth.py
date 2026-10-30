@@ -3,7 +3,6 @@ def cadastrar(
     email="jogador@tobias.dev",
     senha="senha12345",
     apelido="Raquete",
-    cpf="11144477735",
 ):
     return cliente.post(
         "/v1/auth/cadastro",
@@ -12,7 +11,6 @@ def cadastrar(
             "senha": senha,
             "nome": "Jogador de Teste",
             "apelido": apelido,
-            "cpf": cpf,
             "data_nascimento": "2000-05-10",
             "perfil": "casual",
         },
@@ -43,39 +41,23 @@ def test_cadastro_nao_vaza_senha(cliente):
 
 def test_cadastro_nao_devolve_dados_pessoais(cliente):
     corpo = cadastrar(cliente).json()
-    assert "cpf" not in corpo
     assert "data_nascimento" not in corpo
 
 
 def test_email_duplicado_e_recusado(cliente):
     cadastrar(cliente)
-    resposta = cadastrar(cliente, apelido="Outro", cpf="52998224725")
+    resposta = cadastrar(cliente, apelido="Outro")
     assert resposta.status_code == 409
     assert resposta.json()["detail"] == "E-mail ja cadastrado"
-
-
-def test_cpf_duplicado_e_recusado(cliente):
-    cadastrar(cliente)
-    resposta = cadastrar(cliente, email="outro@tobias.dev", apelido="Outro")
-    assert resposta.status_code == 409
-    assert resposta.json()["detail"] == "CPF ja cadastrado"
 
 
 def test_apelido_duplicado_e_recusado(cliente):
     cadastrar(cliente)
     resposta = cadastrar(
-        cliente, email="outro@tobias.dev", cpf="52998224725"
+        cliente, email="outro@tobias.dev"
     )
     assert resposta.status_code == 409
     assert resposta.json()["detail"] == "Apelido ja em uso"
-
-
-def test_cpf_invalido_e_recusado(cliente):
-    assert cadastrar(cliente, cpf="11111111111").status_code == 422
-
-
-def test_cpf_aceita_formatado_e_guarda_so_digitos(cliente):
-    assert cadastrar(cliente, cpf="111.444.777-35").status_code == 201
 
 
 def test_senha_curta_e_recusada(cliente):

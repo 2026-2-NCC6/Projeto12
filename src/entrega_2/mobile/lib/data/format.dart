@@ -43,3 +43,7 @@ String fmtSegundos(int ms) {
 /// Data no formato dd/MM/aaaa: 12/05/1998.
 String fmtData(DateTime d) =>
     '${twoDigits(d.day)}/${twoDigits(d.month)}/${d.year}';
+
+/// Data no formato aaaa-MM-dd, o usado pela API: 1998-05-12.
+String fmtDataIso(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${twoDigits(d.month)}-${twoDigits(d.day)}';

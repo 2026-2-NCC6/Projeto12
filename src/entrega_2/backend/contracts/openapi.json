@@ -620,10 +620,6 @@
             "minLength": 2,
             "title": "Apelido"
           },
-          "cpf": {
-            "type": "string",
-            "title": "Cpf"
-          },
           "data_nascimento": {
             "type": "string",
             "format": "date",
@@ -640,7 +636,6 @@
           "senha",
           "nome",
           "apelido",
-          "cpf",
           "data_nascimento"
         ],
         "title": "CadastroEntrada",
@@ -942,7 +937,7 @@
           "papel"
         ],
         "title": "UsuarioSaida",
-        "description": "O que a API devolve sobre um usuario.\n\nCPF e data de nascimento ficam de fora de proposito: sao guardados,\nmas nunca saem da API."
+        "description": "O que a API devolve sobre um usuario.\n\nA data de nascimento fica de fora: e guardada, mas nunca sai da API."
       },
       "ValidationError": {
         "properties": {
