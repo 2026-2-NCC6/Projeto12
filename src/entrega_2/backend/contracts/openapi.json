@@ -373,6 +373,45 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Excluir",
+        "description": "Exclusao logica de um treino.\n\nO jogador apaga apenas os proprios treinos pessoais. O admin\napaga qualquer treino, inclusive do catalogo. A linha permanece\nno banco porque as sessoes apontam para as versoes do treino.",
+        "operationId": "excluir_v1_drills__treino_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "treino_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Treino Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/drills/{treino_id}/versions": {
@@ -458,6 +497,68 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/TreinoSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/usuarios": {
+      "get": {
+        "tags": [
+          "administracao"
+        ],
+        "summary": "Listar Usuarios",
+        "description": "Lista os usuarios cadastrados. Apenas para admin.\n\nA resposta usa o mesmo UsuarioSaida das outras rotas, entao CPF e\ndata de nascimento continuam fora: nem o admin os ve pela API.",
+        "operationId": "listar_usuarios_v1_admin_usuarios_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaUsuarios"
                 }
               }
             }
@@ -627,6 +728,37 @@
         ],
         "title": "PaginaTreinos",
         "description": "Envelope de paginacao: o app precisa do total para saber se ha proxima pagina."
+      },
+      "PaginaUsuarios": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UsuarioSaida"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginaUsuarios"
       },
       "Perfil": {
         "type": "string",
