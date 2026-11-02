@@ -10,7 +10,6 @@ import 'package:smart_tennis_arena_mobile/router.dart';
 import 'package:smart_tennis_arena_mobile/state/app_settings.dart';
 import 'package:smart_tennis_arena_mobile/state/profile_state.dart';
 import 'package:smart_tennis_arena_mobile/widgets/buttons.dart';
-import 'package:smart_tennis_arena_mobile/widgets/field.dart';
 import 'package:smart_tennis_arena_mobile/widgets/layout.dart';
 
 /// Todas as rotas do app. Os estados da Calibração, o diálogo de exclusão
@@ -386,22 +385,6 @@ void main() {
     expect(find.text('Consistência'), findsNothing);
     expect(find.text('KO'), findsOneWidget);
     expect(find.text('Erros'), findsOneWidget);
-    await _fechar(tester);
-  });
-
-  testWidgets('cadastro valida o CPF', (tester) async {
-    _tamanhoTela(tester, const Size(390, 844));
-    await _abrir(tester, Routes.cadastro);
-    expect(find.text('Modo casual'), findsOneWidget);
-    final cpf = find.widgetWithText(AppField, 'CPF');
-    await tester.ensureVisible(cpf);
-    await tester.enterText(
-      find.descendant(of: cpf, matching: find.byType(EditableText)),
-      '11111111111',
-    );
-    await tester.pump();
-    expect(find.text('111.111.111-11'), findsOneWidget);
-    expect(find.text('CPF inválido. Confira os números.'), findsOneWidget);
     await _fechar(tester);
   });
 

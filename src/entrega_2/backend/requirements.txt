@@ -7,3 +7,6 @@ alembic
 pyjwt
 bcrypt
 email-validator
+sqladmin
+itsdangerous
+greenlet

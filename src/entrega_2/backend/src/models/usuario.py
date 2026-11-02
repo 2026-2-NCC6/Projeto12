@@ -26,7 +26,6 @@ class Usuario(Base):
     senha_hash: Mapped[str] = mapped_column(String(255))
     nome: Mapped[str] = mapped_column(String(120))
     apelido: Mapped[str] = mapped_column(String(40), unique=True, index=True)
-    cpf: Mapped[str] = mapped_column(String(11), unique=True)
     data_nascimento: Mapped[date] = mapped_column(Date)
     perfil: Mapped[Perfil] = mapped_column(
         Enum(Perfil, name="perfil_jogador"), default=Perfil.casual

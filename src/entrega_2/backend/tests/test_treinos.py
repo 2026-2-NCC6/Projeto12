@@ -5,19 +5,19 @@ def auth(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def criar_jogador(cliente, email, apelido, cpf):
-    cadastrar(cliente, email=email, apelido=apelido, cpf=cpf)
+def criar_jogador(cliente, email, apelido):
+    cadastrar(cliente, email=email, apelido=apelido)
     return logar(cliente, email=email)
 
 
 def token_vitoria(cliente):
     return criar_jogador(
-        cliente, "vitoria@tobias.dev", "Vick", "11144477735"
+        cliente, "vitoria@tobias.dev", "Vick"
     )
 
 
 def token_joao(cliente):
-    return criar_jogador(cliente, "joao@tobias.dev", "Joao", "52998224725")
+    return criar_jogador(cliente, "joao@tobias.dev", "Joao")
 
 
 def token_admin(cliente, promover):
