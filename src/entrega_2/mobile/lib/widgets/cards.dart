@@ -66,11 +66,11 @@ class DrillCard extends StatelessWidget {
             runSpacing: 4,
             children: [
               meta(AppIcons.target, '${drill.lances} lances'),
-              meta(AppIcons.clock, 'Sessão: ${fmtDuracao(drill.duracaoS)}'),
+              meta(AppIcons.clock, 'Sessão: ${fmtDuracaoMs(drill.duracaoMs)}'),
               meta(AppIcons.flame, drill.nivel.label),
               meta(
                 AppIcons.timer,
-                'Intervalo entre os lances: ${drill.intervaloS} s',
+                'Intervalo entre os lances: ${fmtSegundos(drill.intervaloExatoMs)}',
               ),
             ],
           ),

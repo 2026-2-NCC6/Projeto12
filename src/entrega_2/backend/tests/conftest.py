@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 from src.db.base import Base
 from src.db.session import get_db
 from src.main import app
+from src.models.usuario import Papel, Usuario
 
 engine_teste = create_engine(
     "sqlite://",
@@ -31,3 +32,21 @@ def cliente():
     yield TestClient(app)
     app.dependency_overrides.clear()
     Base.metadata.drop_all(engine_teste)
+
+
+@pytest.fixture
+def promover_admin():
+    """Promove um usuario a admin direto no banco de teste.
+
+    Precisa ser fixture, e nao funcao importada: importar o conftest
+    criaria um segundo banco em memoria, separado do que o pytest usa.
+    """
+
+    def _promover(email="vitoria@tobias.dev"):
+        db = SessionTeste()
+        usuario = db.query(Usuario).filter(Usuario.email == email).first()
+        usuario.papel = Papel.admin
+        db.commit()
+        db.close()
+
+    return _promover
