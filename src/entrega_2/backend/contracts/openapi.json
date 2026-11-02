@@ -1,0 +1,1029 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "TOBIAS API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/auth/cadastro": {
+      "post": {
+        "tags": [
+          "autenticacao"
+        ],
+        "summary": "Cadastrar",
+        "description": "Cria uma conta. O papel e sempre jogador: nunca vem do cliente.",
+        "operationId": "cadastrar_v1_auth_cadastro_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CadastroEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsuarioSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/login": {
+      "post": {
+        "tags": [
+          "autenticacao"
+        ],
+        "summary": "Login",
+        "description": "Confere as credenciais e devolve o token.\n\nA mensagem de erro e a mesma para e-mail inexistente e senha errada,\npara nao revelar quais e-mails estao cadastrados.",
+        "operationId": "login_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/eu": {
+      "get": {
+        "tags": [
+          "autenticacao"
+        ],
+        "summary": "Quem Sou Eu",
+        "description": "Devolve os dados de quem esta com o token.",
+        "operationId": "quem_sou_eu_v1_auth_eu_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsuarioSaida"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/v1/drills": {
+      "get": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Listar",
+        "description": "Lista treinos com paginacao e filtros.\n\nO jogador ve apenas o catalogo e os proprios treinos, qualquer\nque seja o filtro que ele mande.",
+        "operationId": "listar_v1_drills_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "escopo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Escopo"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Escopo"
+            }
+          },
+          {
+            "name": "nivel",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Nivel"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Nivel"
+            }
+          },
+          {
+            "name": "busca",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Busca"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaTreinos"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Criar",
+        "description": "Cria um treino com a primeira versao.\n\nO escopo e derivado do papel: admin publica no catalogo, jogador\ncria apenas treinos pessoais. Nunca vem do cliente.",
+        "operationId": "criar_v1_drills_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TreinoEntrada"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreinoSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drills/{treino_id}": {
+      "get": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Detalhar",
+        "description": "Detalhe de um treino, com a versao atual.\n\nDevolve 404 quando o treino existe mas nao e deste usuario: nao\nrevelar a existencia e parte da prevencao de IDOR da US-802.",
+        "operationId": "detalhar_v1_drills__treino_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "treino_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Treino Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreinoSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Editar",
+        "description": "Edita um treino publicando uma versao nova.\n\nA versao anterior nao e alterada: as sessoes ja realizadas\ncontinuam apontando para ela, e o historico permanece correto.",
+        "operationId": "editar_v1_drills__treino_id__put",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "treino_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Treino Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TreinoEntrada"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreinoSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Excluir",
+        "description": "Exclusao logica de um treino.\n\nO jogador apaga apenas os proprios treinos pessoais. O admin\napaga qualquer treino, inclusive do catalogo. A linha permanece\nno banco porque as sessoes apontam para as versoes do treino.",
+        "operationId": "excluir_v1_drills__treino_id__delete",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "treino_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Treino Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drills/{treino_id}/versions": {
+      "get": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Listar Versoes",
+        "description": "Historico de versoes do treino, da mais nova para a mais antiga.",
+        "operationId": "listar_versoes_v1_drills__treino_id__versions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "treino_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Treino Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VersaoSaida"
+                  },
+                  "title": "Response Listar Versoes V1 Drills  Treino Id  Versions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/drills/{treino_id}/copy": {
+      "post": {
+        "tags": [
+          "treinos"
+        ],
+        "summary": "Copiar",
+        "description": "Copia um treino para os treinos pessoais de quem chamou.\n\nCopy-on-write da US-609: o original nao e alterado, e a copia\nguarda em origem_id de onde veio.",
+        "operationId": "copiar_v1_drills__treino_id__copy_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "treino_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Treino Id"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TreinoSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/usuarios": {
+      "get": {
+        "tags": [
+          "administracao"
+        ],
+        "summary": "Listar Usuarios",
+        "description": "Lista os usuarios cadastrados. Apenas para admin.\n\nA resposta usa o mesmo UsuarioSaida das outras rotas, entao CPF e\ndata de nascimento continuam fora: nem o admin os ve pela API.",
+        "operationId": "listar_usuarios_v1_admin_usuarios_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaUsuarios"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CadastroEntrada": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "senha": {
+            "type": "string",
+            "maxLength": 72,
+            "minLength": 8,
+            "title": "Senha"
+          },
+          "nome": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Nome"
+          },
+          "apelido": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Apelido"
+          },
+          "data_nascimento": {
+            "type": "string",
+            "format": "date",
+            "title": "Data Nascimento"
+          },
+          "perfil": {
+            "$ref": "#/components/schemas/Perfil",
+            "default": "casual"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "senha",
+          "nome",
+          "apelido",
+          "data_nascimento"
+        ],
+        "title": "CadastroEntrada",
+        "description": "Dados que o aplicativo envia para criar uma conta."
+      },
+      "Escopo": {
+        "type": "string",
+        "enum": [
+          "catalogo",
+          "pessoal"
+        ],
+        "title": "Escopo"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LoginEntrada": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email"
+          },
+          "senha": {
+            "type": "string",
+            "title": "Senha"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "senha"
+        ],
+        "title": "LoginEntrada"
+      },
+      "Nivel": {
+        "type": "string",
+        "enum": [
+          "facil",
+          "medio",
+          "dificil",
+          "infantil",
+          "personalizado"
+        ],
+        "title": "Nivel"
+      },
+      "PaginaTreinos": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TreinoSaida"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginaTreinos",
+        "description": "Envelope de paginacao: o app precisa do total para saber se ha proxima pagina."
+      },
+      "PaginaUsuarios": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UsuarioSaida"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginaUsuarios"
+      },
+      "Perfil": {
+        "type": "string",
+        "enum": [
+          "casual",
+          "iniciante",
+          "infantil"
+        ],
+        "title": "Perfil"
+      },
+      "TokenSaida": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token"
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token"
+        ],
+        "title": "TokenSaida"
+      },
+      "TreinoEntrada": {
+        "properties": {
+          "titulo": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 3,
+            "title": "Titulo"
+          },
+          "descricao": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao"
+          },
+          "nivel": {
+            "$ref": "#/components/schemas/Nivel"
+          },
+          "qtd_lances": {
+            "type": "integer",
+            "maximum": 200.0,
+            "minimum": 1.0,
+            "title": "Qtd Lances"
+          },
+          "intervalo_ms": {
+            "type": "integer",
+            "maximum": 60000.0,
+            "minimum": 500.0,
+            "title": "Intervalo Ms"
+          },
+          "falas_tobias": {
+            "type": "boolean",
+            "title": "Falas Tobias",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "titulo",
+          "nivel",
+          "qtd_lances",
+          "intervalo_ms"
+        ],
+        "title": "TreinoEntrada",
+        "description": "O que o cliente pode enviar ao criar um treino.\n\nNao existe campo escopo nem owner_id de proposito: ambos sao\nderivados de quem esta chamando, nunca do corpo da requisicao."
+      },
+      "TreinoSaida": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "descricao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao"
+          },
+          "escopo": {
+            "$ref": "#/components/schemas/Escopo"
+          },
+          "owner_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Id"
+          },
+          "origem_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Origem Id"
+          },
+          "versao_atual": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VersaoSaida"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "titulo",
+          "descricao",
+          "escopo",
+          "owner_id",
+          "origem_id"
+        ],
+        "title": "TreinoSaida"
+      },
+      "UsuarioSaida": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "apelido": {
+            "type": "string",
+            "title": "Apelido"
+          },
+          "perfil": {
+            "$ref": "#/components/schemas/Perfil"
+          },
+          "papel": {
+            "type": "string",
+            "title": "Papel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "nome",
+          "apelido",
+          "perfil",
+          "papel"
+        ],
+        "title": "UsuarioSaida",
+        "description": "O que a API devolve sobre um usuario.\n\nA data de nascimento fica de fora: e guardada, mas nunca sai da API."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VersaoSaida": {
+        "properties": {
+          "numero": {
+            "type": "integer",
+            "title": "Numero"
+          },
+          "nivel": {
+            "$ref": "#/components/schemas/Nivel"
+          },
+          "qtd_lances": {
+            "type": "integer",
+            "title": "Qtd Lances"
+          },
+          "intervalo_ms": {
+            "type": "integer",
+            "title": "Intervalo Ms"
+          },
+          "falas_tobias": {
+            "type": "boolean",
+            "title": "Falas Tobias"
+          },
+          "publicado_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Publicado Em"
+          }
+        },
+        "type": "object",
+        "required": [
+          "numero",
+          "nivel",
+          "qtd_lances",
+          "intervalo_ms",
+          "falas_tobias",
+          "publicado_em"
+        ],
+        "title": "VersaoSaida",
+        "description": "Os parametros de um treino em uma versao."
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}
