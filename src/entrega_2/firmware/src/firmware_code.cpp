@@ -145,7 +145,9 @@ void pararAudio() {
 
 void enviarBLE(String msg) {
   if (deviceConnected && pTxCharacteristic != NULL) {
-    pTxCharacteristic->setValue(msg.c_str());
+    // '\n' marca o fim de cada JSON para o app (que junta os pacotes BLE por linha)
+    String linha = msg + "\n";
+    pTxCharacteristic->setValue(linha.c_str());
     pTxCharacteristic->notify();
   }
   Serial.print("📱 [BLE TX] -> ");
@@ -412,7 +414,12 @@ void setup() {
   pRxCharacteristic->setCallbacks(new MyRxCallbacks());
 
   pService->start();
-  pServer->getAdvertising()->start();
+
+  // Anuncia o UUID do serviço NUS junto com o nome, para o app encontrar o Tobias no scan
+  BLEAdvertising *pAdvertising = pServer->getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->start();
 
   Serial.println("Inicializando DFPlayer Mini...");
   delay(1500);

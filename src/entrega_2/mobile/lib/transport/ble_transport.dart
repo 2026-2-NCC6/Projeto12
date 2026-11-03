@@ -6,6 +6,37 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'device_transport.dart';
 
+/// TOBIAS encontrado na busca BLE.
+class TobiasEncontrado {
+  const TobiasEncontrado({
+    required this.device,
+    required this.nome,
+    this.rssi,
+  });
+
+  final BluetoothDevice device;
+  final String nome;
+
+  /// Intensidade do sinal em dBm. Nulo quando o aparelho já está conectado
+  /// pelo sistema (não aparece no scan, então não há leitura de sinal).
+  final int? rssi;
+
+  /// Acima de −70 dBm a conexão costuma ser estável.
+  bool get sinalForte => rssi == null || rssi! >= -70;
+}
+
+/// Motivos para a busca BLE não poder começar.
+enum FalhaBusca {
+  /// Aparelho (ou navegador) sem Bluetooth Low Energy.
+  naoSuportado,
+
+  /// Usuário negou Bluetooth / Dispositivos próximos.
+  semPermissao,
+
+  /// Qualquer outro erro do plugin.
+  erro,
+}
+
 /// Implementação real de [DeviceTransport] usando Bluetooth Low Energy (BLE)
 /// e o protocolo Nordic UART Service (NUS) para comunicação com o Tobias (ESP32).
 class BleTransport implements DeviceTransport {
@@ -37,71 +68,127 @@ class BleTransport implements DeviceTransport {
   bool get isConnected => _isConnected;
   BluetoothDevice? get device => _device;
 
-  /// Procura e conecta ao dispositivo BLE Tobias.
-  Future<bool> connect({
+  /// Nome do TOBIAS conectado (ou do último usado).
+  String get deviceName => _deviceName;
+
+  /// Estado do Bluetooth do celular (ligado, desligado, sem permissão...).
+  Stream<BluetoothAdapterState> get adapterState => FlutterBluePlus.adapterState;
+
+  /// Emite `true` enquanto a busca BLE está rodando.
+  Stream<bool> get buscando => FlutterBluePlus.isScanning;
+
+  Future<bool> get suportado async {
+    try {
+      return await FlutterBluePlus.isSupported;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Pede ao Android para ligar o Bluetooth (no iOS não há como).
+  Future<void> ligarBluetooth() async {
+    try {
+      await FlutterBluePlus.turnOn();
+    } catch (e) {
+      developer.log('Não foi possível ligar o Bluetooth: $e', name: 'BleTransport');
+    }
+  }
+
+  static bool _ehTobias(String nome) => nome.toUpperCase().contains('TOBIAS');
+
+  /// Lista ao vivo dos TOBIAS por perto, do sinal mais forte para o mais fraco.
+  ///
+  /// Assine antes de chamar [iniciarBusca]. Filtra pelo nome ou pelo UUID do
+  /// serviço, então funciona mesmo com firmware que não anuncia o UUID.
+  Stream<List<TobiasEncontrado>> get encontrados =>
+      FlutterBluePlus.onScanResults.map((results) {
+        final lista = [
+          for (final r in results)
+            if (_ehTobias(r.advertisementData.advName) ||
+                _ehTobias(r.device.platformName) ||
+                r.advertisementData.serviceUuids.contains(serviceUuid))
+              TobiasEncontrado(
+                device: r.device,
+                nome: _nomeDe(r.device, r.advertisementData.advName),
+                rssi: r.rssi,
+              ),
+        ]..sort((a, b) => (b.rssi ?? 0).compareTo(a.rssi ?? 0));
+        return lista;
+      });
+
+  /// TOBIAS já conectados pelo sistema: não anunciam, então o scan não os vê.
+  Future<List<TobiasEncontrado>> jaConectados() async {
+    try {
+      final devices = await FlutterBluePlus.systemDevices([serviceUuid]);
+      return [
+        for (final d in devices)
+          if (_ehTobias(d.platformName))
+            TobiasEncontrado(device: d, nome: _nomeDe(d, '')),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static String _nomeDe(BluetoothDevice d, String advName) {
+    if (advName.isNotEmpty) return advName;
+    if (d.platformName.isNotEmpty) return d.platformName;
+    return 'TOBIAS';
+  }
+
+  /// Inicia a busca BLE. Retorna `null` se começou, ou o motivo da falha.
+  ///
+  /// Sem filtro de serviço no scan: o firmware antigo não anunciava o UUID.
+  /// No Android 12+ o plugin pede as permissões de Bluetooth aqui.
+  Future<FalhaBusca?> iniciarBusca({
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    if (!await suportado) return FalhaBusca.naoSuportado;
+    try {
+      await FlutterBluePlus.startScan(timeout: timeout);
+      return null;
+    } catch (e) {
+      developer.log('Erro ao iniciar busca BLE: $e', name: 'BleTransport', error: e);
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('permission')) return FalhaBusca.semPermissao;
+      return FalhaBusca.erro;
+    }
+  }
+
+  Future<void> pararBusca() async {
+    try {
+      await FlutterBluePlus.stopScan();
+    } catch (_) {}
+  }
+
+  /// Conecta ao TOBIAS escolhido na busca e prepara os canais RX/TX.
+  Future<bool> connect(
+    TobiasEncontrado alvo, {
     Duration timeout = const Duration(seconds: 10),
   }) async {
     try {
-      // 1. Garante que o adaptador Bluetooth está disponível
-      if (await FlutterBluePlus.isSupported == false) {
-        developer.log('BLE não suportado neste aparelho', name: 'BleTransport');
-        return false;
-      }
-
-      // Se já estiver conectado ao Tobias, descobre os serviços e retorna sucesso
-      if (_device != null && _isConnected && _rxChar != null && _txChar != null) {
+      // Já conectado a este mesmo TOBIAS: nada a fazer
+      if (_device?.remoteId == alvo.device.remoteId &&
+          _isConnected &&
+          _rxChar != null &&
+          _txChar != null) {
         return true;
       }
+      if (_device != null) await disconnect();
 
-      // 2. Inicia o scan pelo dispositivo nomeado 'TOBIAS' ou pelo Service UUID
-      developer.log('Iniciando busca BLE pelo TOBIAS...', name: 'BleTransport');
-      
-      BluetoothDevice? alvo;
+      // O scan atrapalha a conexão em alguns Androids
+      await pararBusca();
 
-      // Primeiro verifica dispositivos já pareados/conectados pelo sistema
-      final connectedSystemDevices = await FlutterBluePlus.systemDevices([serviceUuid]);
-      for (final d in connectedSystemDevices) {
-        if (d.platformName.toUpperCase().contains('TOBIAS')) {
-          alvo = d;
-          break;
-        }
-      }
-
-      if (alvo == null) {
-        await FlutterBluePlus.startScan(
-          timeout: timeout,
-          withServices: [serviceUuid],
-        );
-
-        await for (final results in FlutterBluePlus.scanResults) {
-          for (final r in results) {
-            final name = r.device.platformName.toUpperCase();
-            final advName = r.advertisementData.advName.toUpperCase();
-            if (name.contains('TOBIAS') || advName.contains('TOBIAS')) {
-              alvo = r.device;
-              break;
-            }
-          }
-          if (alvo != null) break;
-        }
-
-        await FlutterBluePlus.stopScan();
-      }
-
-      if (alvo == null) {
-        developer.log('TOBIAS não encontrado no scan BLE', name: 'BleTransport');
-        return false;
-      }
-
-      // 3. Conecta ao dispositivo
-      _device = alvo;
-      _deviceName = alvo.platformName.isNotEmpty ? alvo.platformName : 'TOBIAS';
+      // 1. Conecta ao dispositivo
+      final device = alvo.device;
+      _device = device;
+      _deviceName = alvo.nome;
       developer.log('Conectando ao dispositivo $_deviceName...', name: 'BleTransport');
 
-      await alvo.connect(timeout: timeout, autoConnect: false);
+      await device.connect(timeout: timeout, autoConnect: false);
 
       _connSub?.cancel();
-      _connSub = alvo.connectionState.listen((state) {
+      _connSub = device.connectionState.listen((state) {
         _isConnected = (state == BluetoothConnectionState.connected);
         if (!_isConnected) {
           _rxChar = null;
@@ -109,8 +196,8 @@ class BleTransport implements DeviceTransport {
         }
       });
 
-      // 4. Descobre serviços e características RX/TX
-      final services = await alvo.discoverServices();
+      // 2. Descobre serviços e características RX/TX
+      final services = await device.discoverServices();
       for (final s in services) {
         if (s.uuid == serviceUuid) {
           for (final c in s.characteristics) {
@@ -123,12 +210,13 @@ class BleTransport implements DeviceTransport {
         }
       }
 
-      if (_txChar == null) {
-        developer.log('Característica TX não encontrada', name: 'BleTransport');
+      if (_txChar == null || _rxChar == null) {
+        developer.log('Características RX/TX não encontradas', name: 'BleTransport');
+        await disconnect();
         return false;
       }
 
-      // 5. Ativa notificações no canal TX (ESP32 -> App)
+      // 3. Ativa notificações no canal TX (ESP32 -> App)
       await _txChar!.setNotifyValue(true);
       _txSubscription?.cancel();
       _txSubscription = _txChar!.onValueReceived.listen(_processarDadosRecebidos);
@@ -151,6 +239,15 @@ class BleTransport implements DeviceTransport {
 
     final content = _buffer.toString();
     if (!content.contains('\n')) {
+      // Firmware antigo não manda '\n': aceita o pacote se já for um JSON inteiro
+      final semQuebra = content.trim();
+      if (semQuebra.startsWith('{') && semQuebra.endsWith('}')) {
+        try {
+          jsonDecode(semQuebra);
+          _buffer.clear();
+          _interpretarJson(semQuebra);
+        } catch (_) {}
+      }
       return; // Aguarda o terminador de linha
     }
 
