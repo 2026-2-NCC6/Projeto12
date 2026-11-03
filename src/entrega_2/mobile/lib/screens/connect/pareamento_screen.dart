@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/mock_data.dart';
 import '../../router.dart';
 import '../../state/device_state.dart';
+import '../../transport/ble_transport.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_text.dart';
@@ -49,52 +50,126 @@ class PareamentoScreen extends StatefulWidget {
 }
 
 class _PareamentoScreenState extends State<PareamentoScreen> {
-  /// No protótipo, "Conectando" avança sozinho para "Conectado" após 2,5 s.
-  /// No app real: GATT conectado → Conectado; erro ou 10 s → Falha.
-  static const _tempoConexao = Duration(milliseconds: 2500);
+  BleTransport get _ble => DeviceState.bleTransport;
 
   late var _estado = widget.estadoInicial;
-  Timer? _timer;
+
+  // Busca BLE (2.1)
+  var _adapter = BluetoothAdapterState.unknown;
+  var _buscando = false;
+  FalhaBusca? _falhaBusca;
+  List<TobiasEncontrado> _doScan = const [];
+  List<TobiasEncontrado> _doSistema = const [];
+  DeviceIdentifier? _selecionadoId;
+
+  StreamSubscription<BluetoothAdapterState>? _adapterSub;
+  StreamSubscription<List<TobiasEncontrado>>? _encontradosSub;
+  StreamSubscription<bool>? _buscandoSub;
 
   @override
   void initState() {
     super.initState();
+    _encontradosSub = _ble.encontrados.listen((lista) {
+      if (mounted) setState(() => _doScan = lista);
+    });
+    _buscandoSub = _ble.buscando.listen((b) {
+      if (mounted) setState(() => _buscando = b);
+    });
+    _ble.suportado.then((ok) {
+      if (!mounted) return;
+      if (!ok) {
+        setState(() => _falhaBusca = FalhaBusca.naoSuportado);
+        return;
+      }
+      // Emite o estado atual logo ao assinar; a busca começa quando estiver ligado
+      _adapterSub = _ble.adapterState.listen(_aoMudarAdapter);
+    });
     _entrar(_estado);
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _adapterSub?.cancel();
+    _encontradosSub?.cancel();
+    _buscandoSub?.cancel();
+    _ble.pararBusca();
     super.dispose();
+  }
+
+  void _aoMudarAdapter(BluetoothAdapterState s) {
+    if (!mounted) return;
+    setState(() => _adapter = s);
+    if (s == BluetoothAdapterState.on && _estado == EstadoPareamento.busca) {
+      _buscar();
+    } else if (s == BluetoothAdapterState.off) {
+      _ble.pararBusca();
+    }
+  }
+
+  /// Já conectados pelo sistema primeiro, depois os do scan (sem repetir).
+  List<TobiasEncontrado> get _encontrados {
+    final ids = {for (final t in _doSistema) t.device.remoteId};
+    return [
+      ..._doSistema,
+      for (final t in _doScan)
+        if (!ids.contains(t.device.remoteId)) t,
+    ];
+  }
+
+  /// Escolhido pelo usuário; se nenhum, o de sinal mais forte.
+  TobiasEncontrado? get _selecionado {
+    final lista = _encontrados;
+    if (lista.isEmpty) return null;
+    for (final t in lista) {
+      if (t.device.remoteId == _selecionadoId) return t;
+    }
+    return lista.first;
+  }
+
+  Future<void> _buscar() async {
+    if (_buscando || _adapter != BluetoothAdapterState.on) return;
+    setState(() {
+      _falhaBusca = null;
+      _doScan = const [];
+    });
+    final sistema = await _ble.jaConectados();
+    final falha = await _ble.iniciarBusca();
+    if (!mounted) return;
+    setState(() {
+      _doSistema = sistema;
+      _falhaBusca = falha;
+    });
   }
 
   void _ir(EstadoPareamento estado) => setState(() => _entrar(estado));
 
   void _entrar(EstadoPareamento estado) {
-    _timer?.cancel();
     _estado = estado;
     switch (estado) {
+      case EstadoPareamento.busca:
+        // Ao voltar para a busca, procura de novo (na abertura, quem dispara é o adapter)
+        if (_adapter == BluetoothAdapterState.on) _buscar();
       case EstadoPareamento.conectando:
         _conectarBle();
       case EstadoPareamento.conectado:
         DeviceState.simulador.value = false;
       case EstadoPareamento.simulador:
+        _ble.pararBusca();
         DeviceState.simulador.value = true;
-      case EstadoPareamento.busca || EstadoPareamento.falha:
+      case EstadoPareamento.falha:
         break;
     }
   }
 
   Future<void> _conectarBle() async {
-    final ok = await DeviceState.bleTransport.connect(
-      timeout: const Duration(seconds: 8),
-    );
-    if (!mounted) return;
-    if (ok) {
-      _ir(EstadoPareamento.conectado);
-    } else {
+    final alvo = _selecionado;
+    if (alvo == null) {
       _ir(EstadoPareamento.falha);
+      return;
     }
+    final ok = await _ble.connect(alvo, timeout: const Duration(seconds: 10));
+    if (!mounted || _estado != EstadoPareamento.conectando) return;
+    _ir(ok ? EstadoPareamento.conectado : EstadoPareamento.falha);
   }
 
   Future<void> _calibrar() async {
@@ -138,67 +213,129 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
 
   // ------------------------------------------------------------ 2.1 Busca
 
-  List<Widget> _busca() => [
-    const _Radar(),
-    Text(
-      'Procurando o TOBIAS…',
-      textAlign: TextAlign.center,
-      style: AppText.titleL,
-    ),
-    Text(
-      'Ligue o boneco e deixe-o por perto. O LED azul pisca enquanto ele anuncia.',
-      textAlign: TextAlign.center,
-      style: AppText.bodyM.c(AppColors.textSecondary),
-    ),
-    Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      spacing: 10,
-      children: [
-        Text(
-          'Dispositivos encontrados (2)',
-          style: AppText.labelM.c(AppColors.textSecondary),
+  List<Widget> _busca() {
+    final lista = _encontrados;
+    final selecionado = _selecionado;
+
+    // Problemas que impedem a busca: título, explicação e ação para resolver
+    final (String, String, String, VoidCallback)? problema =
+        switch ((_falhaBusca, _adapter)) {
+          (FalhaBusca.naoSuportado, _) || (_, BluetoothAdapterState.unavailable) => (
+            'Bluetooth indisponível',
+            'Este aparelho não tem Bluetooth Low Energy. Use o simulador para testar o app.',
+            '',
+            () {},
+          ),
+          (FalhaBusca.semPermissao, _) ||
+          (_, BluetoothAdapterState.unauthorized) => (
+            'Permissão necessária',
+            'Permita Bluetooth e Dispositivos próximos nas configurações do app para encontrar o TOBIAS.',
+            'Tentar novamente',
+            _buscar,
+          ),
+          (_, BluetoothAdapterState.off || BluetoothAdapterState.turningOff) => (
+            'Bluetooth desligado',
+            'Ligue o Bluetooth do celular para encontrar o TOBIAS.',
+            'Ligar Bluetooth',
+            _ble.ligarBluetooth,
+          ),
+          (FalhaBusca.erro, _) => (
+            'Não foi possível buscar',
+            'Algo deu errado ao procurar o TOBIAS. Tente de novo.',
+            'Tentar novamente',
+            _buscar,
+          ),
+          _ => null,
+        };
+
+    final (titulo, subtitulo) = switch (problema) {
+      (final t, final s, _, _) => (t, s),
+      null when lista.isNotEmpty => (
+        _buscando ? 'Procurando o TOBIAS…' : 'Escolha o seu TOBIAS',
+        'Toque no boneco que deseja usar e conecte.',
+      ),
+      null when _buscando || _adapter == BluetoothAdapterState.unknown => (
+        'Procurando o TOBIAS…',
+        'Ligue o boneco e deixe-o por perto. O LED azul pisca enquanto ele anuncia.',
+      ),
+      null => (
+        'Nenhum TOBIAS encontrado',
+        'Confirme que o boneco está ligado, com o LED azul piscando, e perto do celular.',
+      ),
+    };
+
+    return [
+      _Radar(animate: problema == null),
+      Text(titulo, textAlign: TextAlign.center, style: AppText.titleL),
+      Text(
+        subtitulo,
+        textAlign: TextAlign.center,
+        style: AppText.bodyM.c(AppColors.textSecondary),
+      ),
+      if (problema == null && lista.isNotEmpty)
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: 10,
+          children: [
+            Text(
+              'Dispositivos encontrados (${lista.length})',
+              style: AppText.labelM.c(AppColors.textSecondary),
+            ),
+            for (final t in lista)
+              _DeviceItem(
+                nome: t.nome,
+                detalhe: switch (t.rssi) {
+                  null => 'ESP32 · já conectado ao celular',
+                  final rssi when t.sinalForte =>
+                    'ESP32 · sinal forte (${_dbm(rssi)})',
+                  final rssi => 'ESP32 · sinal fraco (${_dbm(rssi)})',
+                },
+                badge: t.sinalForte ? 'Sinal forte' : 'Sinal fraco',
+                tone: t.sinalForte ? BadgeTone.accent : BadgeTone.warning,
+                selected: t.device.remoteId == selecionado?.device.remoteId,
+                onTap: () =>
+                    setState(() => _selecionadoId = t.device.remoteId),
+              ),
+          ],
         ),
-        const _DeviceItem(
-          nome: Mock.deviceName,
-          detalhe: 'ESP32 · sinal forte (−52 dBm)',
-          badge: 'Sinal forte',
-          tone: BadgeTone.accent,
-          selected: true,
+      const Spacer(),
+      const NoteRow(
+        icon: AppIcons.info,
+        text:
+            'No Android 12+, permita Bluetooth e Dispositivos próximos para encontrar o TOBIAS.',
+      ),
+      if (problema != null && problema.$3.isNotEmpty)
+        AppButton(problema.$3, icon: AppIcons.bluetooth, onPressed: problema.$4)
+      else if (problema == null && selecionado != null)
+        AppButton(
+          'Conectar ao ${selecionado.nome}',
+          icon: AppIcons.bluetooth,
+          onPressed: () => _ir(EstadoPareamento.conectando),
+        )
+      else if (problema == null && !_buscando)
+        AppButton(
+          'Procurar novamente',
+          icon: AppIcons.refreshCw,
+          onPressed: _buscar,
         ),
-        // Sinal fraco: no protótipo, tocar leva à tela de falha.
-        _DeviceItem(
-          nome: 'TOBIAS-02',
-          detalhe: 'ESP32 · sinal fraco (−81 dBm)',
-          badge: 'Sinal fraco',
-          tone: BadgeTone.warning,
-          selected: false,
-          onTap: () => _ir(EstadoPareamento.falha),
-        ),
-      ],
-    ),
-    const Spacer(),
-    const NoteRow(
-      icon: AppIcons.info,
-      text:
-          'No Android 12+, permita Bluetooth e Dispositivos próximos para encontrar o TOBIAS.',
-    ),
-    AppButton(
-      'Conectar ao ${Mock.deviceName}',
-      icon: AppIcons.bluetooth,
-      onPressed: () => _ir(EstadoPareamento.conectando),
-    ),
-    AppButton.text(
-      'Usar simulador (sem calibração)',
-      onPressed: () => _ir(EstadoPareamento.simulador),
-    ),
-  ];
+      if (problema == null && selecionado != null && !_buscando)
+        AppButton.text('Procurar novamente', onPressed: _buscar),
+      AppButton.text(
+        'Usar simulador (sem calibração)',
+        onPressed: () => _ir(EstadoPareamento.simulador),
+      ),
+    ];
+  }
+
+  /// −52 dBm com sinal de menos tipográfico, como no protótipo.
+  static String _dbm(int rssi) => '${rssi.toString().replaceFirst('-', '−')} dBm';
 
   // ------------------------------------------------------- 2.2 Conectando
 
   List<Widget> _conectando() => [
     const _Radar(compact: true),
     ..._titulo(
-      'Conectando ao ${Mock.deviceName}…',
+      'Conectando ao ${_selecionado?.nome ?? 'TOBIAS'}…',
       'Mantenha o celular perto do boneco. Isso leva só alguns segundos.',
     ),
     const _Passos([
@@ -219,22 +356,20 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
     const _Radar(compact: true, icon: AppIcons.bluetoothConnected),
     ..._titulo(
       'Bluetooth conectado',
-      'A conexão com o ${Mock.deviceName} foi realizada. Falta calibrar o sensor para medir seus lances.',
+      'A conexão com o ${_ble.deviceName} foi realizada. Falta calibrar o sensor para medir seus lances.',
     ),
-    const _DeviceItem(
-      nome: Mock.deviceName,
+    _DeviceItem(
+      nome: _ble.deviceName,
       detalhe: 'ESP32 · Bluetooth conectado',
       badge: 'Conectado',
       tone: BadgeTone.accent,
       selected: true,
     ),
+    // O firmware ainda não informa a bateria, então ela não aparece aqui
     const _Passos([
       (_Passo.feito, 'Dispositivo encontrado'),
       (_Passo.feito, 'Conexão Bluetooth realizada'),
-      (
-        _Passo.feito,
-        'Boneco respondendo · bateria ${Mock.deviceBateriaAoConectar}%',
-      ),
+      (_Passo.feito, 'Canal de comunicação com o boneco pronto'),
     ]),
     const Spacer(),
     AppButton(
@@ -261,7 +396,7 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
     ),
     ..._titulo(
       'Não foi possível conectar ao boneco',
-      'O ${Mock.deviceName} não respondeu. Siga os passos abaixo e tente de novo.',
+      'O ${_selecionado?.nome ?? 'TOBIAS'} não respondeu. Siga os passos abaixo e tente de novo.',
     ),
     const _ComoConectar(),
     const Spacer(),
