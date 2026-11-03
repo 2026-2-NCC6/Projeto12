@@ -575,4 +575,5 @@ web_modules/
 # Vite files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-.vite/
+.vite/*.db
+*.db
