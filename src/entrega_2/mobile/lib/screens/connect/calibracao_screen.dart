@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/format.dart';
+import '../../data/api_client.dart';
+import '../../data/auth_store.dart';
 import '../../router.dart';
 import '../../state/device_state.dart';
 import '../../theme/app_colors.dart';
@@ -57,10 +59,12 @@ class _CalibracaoScreenState extends State<CalibracaoScreen> {
   void dispose() {
     _sub?.cancel();
     _timer?.cancel();
+    DeviceState.transport.send(DeviceCommand.finalizar);
     super.dispose();
   }
 
   void _ouvir() {
+    DeviceState.transport.send(DeviceCommand.iniciarCalibracao);
     _sub = DeviceState.transport.events.listen(_aoImpacto);
   }
 
@@ -74,6 +78,20 @@ class _CalibracaoScreenState extends State<CalibracaoScreen> {
     setState(() => _fase = _Fase.calculando);
     _timer = Timer(_espera, () {
       DeviceState.refG.value = _mediana;
+      // Dificuldade: se o jogador teve impactos fortes (mediana > 38°), calcula acréscimo.
+      // Se for fraco/normal (<= 38°), dificuldade = 0.0 (padrão fácil inalterado).
+      final dificuldade = (_mediana > 38.0)
+          ? double.parse(((_mediana - 38.0).clamp(0.0, 20.0)).toStringAsFixed(1))
+          : 0.0;
+      DeviceState.calibracao.value = dificuldade;
+      AuthStore.salvarCalibracao(dificuldade);
+
+      // Persiste no backend caso o usuário esteja autenticado
+      AuthStore.lerToken().then((token) {
+        if (token != null) {
+          ApiClient().atualizarCalibracao(token, dificuldade).catchError((_) => null);
+        }
+      });
       setState(() => _fase = _Fase.concluida);
     });
   }
@@ -82,6 +100,7 @@ class _CalibracaoScreenState extends State<CalibracaoScreen> {
   void _recomecar() {
     _sub?.cancel();
     _timer?.cancel();
+    DeviceState.transport.send(DeviceCommand.finalizar);
     setState(() {
       _batidas.clear();
       _fase = _Fase.coletando;

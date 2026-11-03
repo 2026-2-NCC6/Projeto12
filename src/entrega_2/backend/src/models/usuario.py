@@ -1,7 +1,7 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Enum, String, func
+from sqlalchemy import Date, DateTime, Enum, Float, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
@@ -32,6 +32,9 @@ class Usuario(Base):
     )
     papel: Mapped[Papel] = mapped_column(
         Enum(Papel, name="papel_usuario"), default=Papel.jogador
+    )
+    calibracao: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default="0.0"
     )
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

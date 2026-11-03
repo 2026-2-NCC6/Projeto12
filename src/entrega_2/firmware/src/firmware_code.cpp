@@ -10,7 +10,7 @@
  *   - Alto-falante: 4 Ohms / 3 Watts
  *   - LED Indicador: Verde (GPIO 2)
  * 
- * Pinagem Física:
+ * Pinagem Física Confirmada:
  *   - MPU-6050: SDA -> GPIO 22 | SCL -> GPIO 21 | AD0 -> GND (Endereço 0x68)
  *   - DFPlayer: RX -> Resistor 1kΩ -> GPIO 17 (TX2) | VCC -> 5V/VIN | GND -> GND
  *   - Alto-falante: SPK_1 (Pino 6) e SPK_2 (Pino 8) do DFPlayer
@@ -19,12 +19,15 @@
  * Áudios no Cartão MicroSD (/mp3/):
  *   - 0001.mp3 -> Impacto Fraco
  *   - 0002.mp3 -> Impacto Médio
- *   - 0003.mp3 -> Impacto Forte
- *   - 0004.mp3 -> Impacto K.O. (Perfeito)
+ *   - 0004.mp3 -> Impacto K.O. (Forte / Perfeito)
  * 
- * Regra de Comunicação BLE:
- *   - Calibração: Notifica bola a bola para atualizar a barra de progresso do front.
- *   - Treino: Executa silenciosamente e envia UMA ÚNICA requisição ao final da sessão.
+ * Modos de Operação:
+ *   1. MODO_AGUARDANDO (Standby): O Tobias fica 100% SILENCIOSO. Não toca som,
+ *      não acende LED e não processa batidas físicas enquanto o App não comandar.
+ *   2. MODO_CALIBRACAO: Espera 5 batidas no tempo do usuário (sem timeout),
+ *      notifica bola a bola (1/5 a 5/5) para animar o anel/barra no App.
+ *   3. MODO_TREINO: Treino dinâmico com quantidade e intervalo configuráveis (mín. 3s).
+ *      Detecta acertos físicos e detecta ERROS por timeout caso passe o tempo sem impacto.
  * ============================================================================
  */
 
@@ -54,16 +57,12 @@ BLEServer *pServer = NULL;
 BLECharacteristic *pTxCharacteristic = NULL;
 bool deviceConnected = false;
 
-// --- CONFIGURAÇÕES DE IMPACTO E INCLINAÇÃO ---
-const float LIMIAR_CHOQUE_DELTA = 0.70; // Choque brusco inicial em G's
-const float ANGULO_MIN_IMPACTO  = 12.0; // Ângulo mínimo para validar tombo
-const float ANGULO_ESTABILIZADO = 10.0; // Tobias voltou à verticalidade
-
-// Categorias de Pancada
-const float ANGULO_FRACO = 15.0; // 15° a 30° -> 0001.mp3
-const float ANGULO_MEDIO = 30.0; // 30° a 50° -> 0002.mp3
-const float ANGULO_FORTE = 50.0; // 50° a 65° -> 0003.mp3
-const float ANGULO_KO    = 65.0; // Acima de 65° -> 0004.mp3 (K.O. / Perfeito)
+// --- LIMIARES FÍSICOS DE INCLINAÇÃO (EM GRAUS) ---
+const float ANGULO_GATILHO = 22.0; // Mínimo de 22° para validar pancada
+const float ANGULO_MEDIO   = 38.0; // 22° a 38° = FRACO | 38° a 58° = MÉDIO
+const float ANGULO_KO      = 58.0; // Acima de 58° = KO (FORTE)
+const float ANGULO_REPOUSO = 14.0; // Abaixo de 14° = Tobias voltou a ficar em pé
+float calibDificuldade     = 0.0;  // Dificuldade dinâmica configurada pela calibração (graus adicionais)
 
 // Estados da Máquina Física do Tobias
 enum EstadoFisico { REPOUSO_PRONTO, CAPTURANDO_PICO, TOCANDO_AUDIO, ESPERANDO_ESTABILIZAR };
@@ -71,27 +70,29 @@ EstadoFisico estadoFisico = REPOUSO_PRONTO;
 
 // Modos de Operação do Sistema
 enum ModoOperacao { MODO_AGUARDANDO, MODO_CALIBRACAO, MODO_TREINO };
-ModoOperacao modoAtual = MODO_AGUARDANDO;
+ModoOperacao modoAtual = MODO_AGUARDANDO; // Inicia em STANDBY silencioso
 
-// Vetor de Referência da Gravidade (calibração automática em pé)
+// Vetor de Referência da Gravidade (calibração automática da verticalidade no setup)
 float refX = 0, refY = 0, refZ = 1.0;
-float forcaGAnterior = 1.0;
 
 unsigned long tempoInicioImpacto = 0;
 unsigned long tempoInicioAudio = 0;
 unsigned long ultimoAjusteVolume = 0;
+unsigned long tempoInicioSessao = 0;
+
+// Temporização de Lances e Timeout (Erros)
+unsigned long tempoInicioJanelaLance = 0;
+unsigned long intervaloLanceMs = 3000;
+const unsigned long INTERVALO_MINIMO_MS = 3000;
 
 float picoAnguloRegistrado = 0.0;
-float picoForcaGRegistrado = 0.0;
+const uint8_t VOLUME_PADRAO = 15; // Volume confortável (0 a 30)
 
-// Configurações de Áudio
-const uint8_t VOLUME_PADRAO = 20; // Volume ideal seguro (0 a 30)
-
-// Contadores de Sessão
+// Contadores e Estatísticas
 int bolaAtual = 0;
 int totalBolasSessao = 0;
-
-// Estatísticas da Sessão
+int contAcertos = 0;
+int contErros = 0;
 int contFraco = 0;
 int contMedio = 0;
 int contForte = 0;
@@ -108,7 +109,8 @@ void pararAudio();
 void lerAcelerometroRaw(float *x, float *y, float *z, bool acumular = false);
 float calcularAnguloInclinacao(float ax, float ay, float az);
 void iniciarCalibracao(int total);
-void iniciarTreino(int total);
+void iniciarTreino(int total, unsigned long intervaloMs, float calib = 0.0);
+void registrarErroTimeout();
 void finalizarSessao();
 
 // --- IMPLEMENTAÇÃO DE ÁUDIO DFPLAYER MINI ---
@@ -126,7 +128,7 @@ void enviarComandoDFPlayer(uint8_t comando, uint8_t p1, uint8_t p2) {
 }
 
 void tocarFaixaMP3(int faixa) {
-  Serial.printf("🔊 [AUDIO] Disparando faixa 000%d.mp3 (3s com fade-out)\n", faixa);
+  Serial.printf("🔊 [AUDIO] Disparando faixa 000%d.mp3 (Volume %d)\n", faixa, VOLUME_PADRAO);
   enviarComandoDFPlayer(0x12, 0x00, (uint8_t)faixa);
 }
 
@@ -158,12 +160,11 @@ class MyServerCallbacks: public BLEServerCallbacks {
   }
   void onDisconnect(BLEServer* pServer) {
     deviceConnected = false;
-    Serial.println("📱 Celular desconectado. Aguardando reconexao...");
+    Serial.println("📱 Celular desconectado.");
     pServer->startAdvertising();
   }
 };
 
-// Processador de Comandos Recebidos do App
 class MyRxCallbacks: public BLECharacteristicCallbacks {
   void onWrite(BLECharacteristic *pCharacteristic) {
     String comando = pCharacteristic->getValue().c_str();
@@ -171,7 +172,7 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
     Serial.print("📩 [BLE RX] Comando recebido: ");
     Serial.println(comando);
 
-    // 1. Comando de Calibração (Ex: "CALIBRAR" ou "CALIBRAR:5")
+    // 1. Iniciar Calibração (App envia "CALIBRAR" ou "CALIBRAR:5")
     if (comando.startsWith("CALIBRAR")) {
       int bolas = 5;
       int index = comando.indexOf(':');
@@ -181,26 +182,48 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
       }
       iniciarCalibracao(bolas);
     }
-    // 2. Comando de Treino Personalizado (Ex: "TREINO:15" ou "TREINO:20")
+    // 2. Iniciar Treino (App envia "TREINO:15:5" ou "TREINO:12:3:8.5"...)
     else if (comando.startsWith("TREINO")) {
-      int bolas = 15;
-      int index = comando.indexOf(':');
-      if (index != -1) {
-        bolas = comando.substring(index + 1).toInt();
-        if (bolas <= 0) bolas = 15;
+      int qtd = 15;
+      unsigned long intervalo = INTERVALO_MINIMO_MS;
+      float calib = 0.0;
+
+      int primeiroDoisPontos = comando.indexOf(':');
+      if (primeiroDoisPontos != -1) {
+        int segundoDoisPontos = comando.indexOf(':', primeiroDoisPontos + 1);
+        if (segundoDoisPontos != -1) {
+          qtd = comando.substring(primeiroDoisPontos + 1, segundoDoisPontos).toInt();
+          int terceiroDoisPontos = comando.indexOf(':', segundoDoisPontos + 1);
+          if (terceiroDoisPontos != -1) {
+            unsigned long val = comando.substring(segundoDoisPontos + 1, terceiroDoisPontos).toInt();
+            intervalo = (val < 100) ? (val * 1000) : val;
+            calib = comando.substring(terceiroDoisPontos + 1).toFloat();
+          } else {
+            unsigned long val = comando.substring(segundoDoisPontos + 1).toInt();
+            intervalo = (val < 100) ? (val * 1000) : val;
+          }
+        } else {
+          qtd = comando.substring(primeiroDoisPontos + 1).toInt();
+        }
       }
-      iniciarTreino(bolas);
+
+      if (qtd <= 0) qtd = 15;
+      if (intervalo < INTERVALO_MINIMO_MS) intervalo = INTERVALO_MINIMO_MS;
+
+      iniciarTreino(qtd, intervalo, calib);
     }
-    // 3. Cancelar Sessão Atual / Reset
+    // 3. Cancelar Sessão / Voltar ao Standby Silencioso
     else if (comando == "STOP" || comando == "CANCELAR" || comando == "RESET") {
       modoAtual = MODO_AGUARDANDO;
       bolaAtual = 0;
       totalBolasSessao = 0;
       pararAudio();
       setVolume(VOLUME_PADRAO);
+      digitalWrite(PIN_LED_VERDE, LOW);
       enviarBLE("{\"status\":\"CANCELADO\",\"modo\":\"AGUARDANDO\"}");
+      Serial.println("🛑 Sessão cancelada. Tobias em STANDBY silencioso.");
     }
-    // 4. Ping / Checagem de Status
+    // 4. Ping / Status
     else if (comando == "PING") {
       String mStr = (modoAtual == MODO_CALIBRACAO) ? "CALIBRACAO" : (modoAtual == MODO_TREINO) ? "TREINO" : "AGUARDANDO";
       enviarBLE("{\"status\":\"PONG\",\"modo\":\"" + mStr + "\",\"bola_atual\":" + String(bolaAtual) + "}");
@@ -212,52 +235,103 @@ void iniciarCalibracao(int total) {
   modoAtual = MODO_CALIBRACAO;
   totalBolasSessao = total;
   bolaAtual = 0;
+  contAcertos = contErros = 0;
   contFraco = contMedio = contForte = contKO = 0;
   somaAngulos = 0;
   maiorAngulo = 0;
+  calibDificuldade = 0.0; // Na calibração sempre usa os limiares base
+  tempoInicioSessao = millis();
 
   digitalWrite(PIN_LED_VERDE, HIGH); delay(200); digitalWrite(PIN_LED_VERDE, LOW);
-  tocarFaixaMP3(1);
+  tocarFaixaMP3(1); // Som curto de sinalização
   enviarBLE("{\"status\":\"CALIB_INICIADA\",\"total\":" + String(totalBolasSessao) + "}");
+  Serial.printf("🎾 Modo CALIBRAÇÃO iniciado: %d batidas aguardadas.\n", totalBolasSessao);
 }
 
-void iniciarTreino(int total) {
+void iniciarTreino(int total, unsigned long intervaloMs, float calib) {
   modoAtual = MODO_TREINO;
   totalBolasSessao = total;
+  intervaloLanceMs = intervaloMs;
+  calibDificuldade = (calib > 0.0) ? calib : 0.0;
   bolaAtual = 0;
+  contAcertos = contErros = 0;
   contFraco = contMedio = contForte = contKO = 0;
   somaAngulos = 0;
   maiorAngulo = 0;
+  tempoInicioSessao = millis();
+  tempoInicioJanelaLance = millis();
+
+  Serial.printf("🎯 Treino Iniciado: %d lances | Intervalo: %lu ms | Dificuldade: +%.1f°\n", 
+                totalBolasSessao, intervaloLanceMs, calibDificuldade);
 
   for (int i = 0; i < 2; i++) {
     digitalWrite(PIN_LED_VERDE, HIGH); delay(100);
     digitalWrite(PIN_LED_VERDE, LOW);  delay(100);
   }
-  tocarFaixaMP3(2); // Som de início do treino
-  enviarBLE("{\"status\":\"TREINO_INICIADO\",\"total\":" + String(totalBolasSessao) + "}");
+  tocarFaixaMP3(2);
+
+  String json = "{\"status\":\"TREINO_INICIADO\",\"total\":" + String(totalBolasSessao) + 
+                ",\"intervalo_ms\":" + String(intervaloLanceMs) + 
+                ",\"dificuldade\":" + String(calibDificuldade, 1) + "}";
+  enviarBLE(json);
+}
+
+void registrarErroTimeout() {
+  bolaAtual++;
+  contErros++;
+  unsigned long tMs = (tempoInicioSessao > 0) ? (millis() - tempoInicioSessao) : millis();
+  String idLance = "L-" + String(millis()) + "-" + String(bolaAtual);
+
+  Serial.printf("❌ [ERRO] Lance %d/%d: Tempo limite expirado (%lu ms) sem impacto!\n", 
+                bolaAtual, totalBolasSessao, intervaloLanceMs);
+
+  digitalWrite(PIN_LED_VERDE, HIGH); delay(60); digitalWrite(PIN_LED_VERDE, LOW);
+
+  String jsonErro = String("{\"tipo\":\"TREINO\",\"bola\":") + String(bolaAtual) + 
+                    ",\"total\":" + String(totalBolasSessao) + 
+                    ",\"resultado\":\"erro\"" +
+                    ",\"classe\":\"sem_impacto\"" +
+                    ",\"knockout\":false" +
+                    ",\"angulo\":0.0" +
+                    ",\"t_ms\":" + String(tMs) + 
+                    ",\"id_lance\":\"" + idLance + "\"}";
+  enviarBLE(jsonErro);
+
+  tempoInicioJanelaLance = millis();
+
+  if (bolaAtual >= totalBolasSessao) {
+    finalizarSessao();
+  }
 }
 
 void finalizarSessao() {
-  float media = (totalBolasSessao > 0) ? (somaAngulos / totalBolasSessao) : 0;
+  float media = (contAcertos > 0) ? (somaAngulos / contAcertos) : 0;
+  int precisao = (totalBolasSessao > 0) ? ((contAcertos * 100) / totalBolasSessao) : 0;
   String tipoSessao = (modoAtual == MODO_CALIBRACAO) ? "CALIB_CONCLUIDA" : "TREINO_CONCLUIDO";
 
-  // Envia a requisição única consolidada final
-  String jsonRelatorio = "{\"status\":\"" + tipoSessao + "\"" +
+  String jsonRelatorio = String("{\"status\":\"") + tipoSessao + "\"" +
                          ",\"total\":" + String(totalBolasSessao) + 
+                         ",\"acertos\":" + String(contAcertos) + 
+                         ",\"erros\":" + String(contErros) + 
+                         ",\"precisao\":" + String(precisao) + 
                          ",\"media_angulo\":" + String(media, 1) + 
                          ",\"max_angulo\":" + String(maiorAngulo, 1) + 
                          ",\"fracos\":" + String(contFraco) + 
                          ",\"medios\":" + String(contMedio) + 
                          ",\"fortes\":" + String(contForte) + 
-                         ",\"kos\":" + String(contKO) + "}";
+                         ",\"kos\":" + String(contKO) + 
+                         ",\"dificuldade\":" + String(calibDificuldade, 1) + "}";
   enviarBLE(jsonRelatorio);
 
+  // Retorna imediatamente para o MODO_AGUARDANDO silencioso
   modoAtual = MODO_AGUARDANDO;
   bolaAtual = 0;
   totalBolasSessao = 0;
+  digitalWrite(PIN_LED_VERDE, LOW);
+  Serial.println("🔒 Sessão finalizada. Tobias retornou ao STANDBY silencioso.");
 }
 
-// --- LEITURA E FÍSICA DO MPU-6050 ---
+// --- MPU-6050 ---
 
 void lerAcelerometroRaw(float *x, float *y, float *z, bool acumular) {
   Wire.beginTransmission(MPU_ADDR);
@@ -326,7 +400,6 @@ void setup() {
   refY = somaY / modRef;
   refZ = somaZ / modRef;
 
-  // Servidor BLE
   BLEDevice::init("TOBIAS");
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
@@ -343,101 +416,114 @@ void setup() {
 
   Serial.println("Inicializando DFPlayer Mini...");
   delay(1500);
-  setVolume(VOLUME_PADRAO);
+  setVolume(VOLUME_PADRAO); // Volume 15
 
+  // 3 piscadas confirmando que o sistema ligou
   for (int i = 0; i < 3; i++) {
     digitalWrite(PIN_LED_VERDE, HIGH); delay(100);
     digitalWrite(PIN_LED_VERDE, LOW);  delay(100);
   }
 
   Serial.println("===========================================================");
-  Serial.println("  SISTEMA TOBIAS ONLINE - PRONTO PARA CONEXAO DO APP      ");
+  Serial.println("  SISTEMA TOBIAS ONLINE - EM STANDBY SILENCIOSO           ");
+  Serial.println("  Aguardando comando do App ('TREINO' ou 'CALIBRAR')...   ");
   Serial.println("===========================================================");
 }
 
-// --- LOOP ---
+// --- LOOP PRINCIPAL ---
 
 void loop() {
+  // REGRA DE OURO: SE NÃO ESTIVER EM TREINO NEM CALIBRAÇÃO, FICA 100% SILENCIOSO!
+  // Nenhuma batida, balanço ou toque emite som ou acende LED no modo de espera.
+  if (modoAtual == MODO_AGUARDANDO) {
+    delay(40);
+    return;
+  }
+
   float ax = 0, ay = 0, az = 0;
   lerAcelerometroRaw(&ax, &ay, &az);
-
-  float forcaG = sqrt(ax * ax + ay * ay + az * az);
-  float deltaChoque = abs(forcaG - forcaGAnterior);
   float anguloAtual = calcularAnguloInclinacao(ax, ay, az);
 
+  // 1. CHECAGEM DE TIMEOUT (APENAS NO MODO TREINO)
+  // No modo calibração NÃO há timeout: o atleta bate as 5 bolas no tempo dele
+  if (modoAtual == MODO_TREINO && estadoFisico == REPOUSO_PRONTO) {
+    if (millis() - tempoInicioJanelaLance >= intervaloLanceMs) {
+      registrarErroTimeout();
+    }
+  }
+
+  // 2. MÁQUINA DE ESTADOS FÍSICA
   switch (estadoFisico) {
 
     case REPOUSO_PRONTO:
-      if (deltaChoque > LIMIAR_CHOQUE_DELTA && anguloAtual > ANGULO_MIN_IMPACTO) {
+      if (anguloAtual >= ANGULO_GATILHO) {
         tempoInicioImpacto = millis();
         picoAnguloRegistrado = anguloAtual;
-        picoForcaGRegistrado = forcaG;
         estadoFisico = CAPTURANDO_PICO;
       }
       break;
 
     case CAPTURANDO_PICO:
-      if (anguloAtual > picoAnguloRegistrado) picoAnguloRegistrado = anguloAtual;
-      if (forcaG > picoForcaGRegistrado) picoForcaGRegistrado = forcaG;
+      if (anguloAtual > picoAnguloRegistrado) {
+        picoAnguloRegistrado = anguloAtual;
+      }
 
       if (millis() - tempoInicioImpacto >= 350) {
-        String intensidade = "FRACO";
+        String classe = "fraco";
+        bool knockout = false;
         int somTocar = 1;
 
-        if (picoAnguloRegistrado >= ANGULO_KO) {
-          intensidade = "KO";
-          somTocar = 4; // 0004.mp3 (K.O. / Perfeito)
+        // Limiares ajustados dinamicamente com base na calibração do jogador
+        float limiarKO = ANGULO_KO + calibDificuldade;
+        float limiarMedio = ANGULO_MEDIO + calibDificuldade;
+
+        if (picoAnguloRegistrado >= limiarKO) {
+          classe = "forte";
+          knockout = true;
+          somTocar = 4; // 0004.mp3 (KO)
+          contForte++;
           contKO++;
         }
-        else if (picoAnguloRegistrado >= ANGULO_FORTE) {
-          intensidade = "FORTE";
-          somTocar = 3; // 0003.mp3
-          contForte++;
-        }
-        else if (picoAnguloRegistrado >= ANGULO_MEDIO) {
-          intensidade = "MEDIO";
-          somTocar = 2; // 0002.mp3
+        else if (picoAnguloRegistrado >= limiarMedio) {
+          classe = "medio";
+          knockout = false;
+          somTocar = 2; // 0002.mp3 (Médio)
           contMedio++;
         }
         else {
-          intensidade = "FRACO";
-          somTocar = 1; // 0001.mp3
+          classe = "fraco";
+          knockout = false;
+          somTocar = 1; // 0001.mp3 (Fraco)
           contFraco++;
         }
 
         somaAngulos += picoAnguloRegistrado;
         if (picoAnguloRegistrado > maiorAngulo) maiorAngulo = picoAnguloRegistrado;
 
+        // Dispara o som e acende o LED
         setVolume(VOLUME_PADRAO);
         tocarFaixaMP3(somTocar);
         digitalWrite(PIN_LED_VERDE, HIGH);
 
-        // 1. MODO CALIBRAÇÃO: Notifica bola a bola para o front-end mover a barra de progresso!
-        if (modoAtual == MODO_CALIBRACAO) {
-          bolaAtual++;
-          String jsonBola = "{\"tipo\":\"CALIB\"" +
-                            ",\"bola\":" + String(bolaAtual) + 
-                            ",\"total\":" + String(totalBolasSessao) + 
-                            ",\"intensidade\":\"" + intensidade + "\"" +
-                            ",\"angulo\":" + String(picoAnguloRegistrado, 1) + 
-                            ",\"forca_g\":" + String(picoForcaGRegistrado, 1) + "}";
-          enviarBLE(jsonBola);
-        }
-        // 2. MODO TREINO: Apenas conta a bola internamente (NÃO envia pacotes intermediários)
-        else if (modoAtual == MODO_TREINO) {
-          bolaAtual++;
-          Serial.printf("🎾 [TREINO] Lance %d/%d registrado (Tombo: %.1f° | Força: %s)\n",
-                        bolaAtual, totalBolasSessao, picoAnguloRegistrado, intensidade.c_str());
-        }
-        // 3. MODO LIVRE: Golpe avulso fora de sessão
-        else {
-          String jsonLivre = "{\"tipo\":\"GOLPE_LIVRE\"" +
-                             ",\"intensidade\":\"" + intensidade + "\"" +
-                             ",\"angulo\":" + String(picoAnguloRegistrado, 1) + 
-                             ",\"forca_g\":" + String(picoForcaGRegistrado, 1) + "}";
-          enviarBLE(jsonLivre);
-        }
+        unsigned long tMs = (tempoInicioSessao > 0) ? (millis() - tempoInicioSessao) : millis();
+        bolaAtual++;
+        contAcertos++;
 
+        String tipoMsg = (modoAtual == MODO_CALIBRACAO) ? "CALIB" : "TREINO";
+        String idLance = "L-" + String(millis()) + "-" + String(bolaAtual);
+
+        String jsonLance = String("{\"tipo\":\"") + tipoMsg + "\"" +
+                           ",\"bola\":" + String(bolaAtual) + 
+                           ",\"total\":" + String(totalBolasSessao) + 
+                           ",\"resultado\":\"acerto\"" +
+                           ",\"classe\":\"" + classe + "\"" +
+                           ",\"knockout\":" + (knockout ? "true" : "false") + 
+                           ",\"angulo\":" + String(picoAnguloRegistrado, 1) + 
+                           ",\"t_ms\":" + String(tMs) + 
+                           ",\"id_lance\":\"" + idLance + "\"}";
+        enviarBLE(jsonLance);
+
+        tempoInicioJanelaLance = millis(); // Reinicia janela do próximo lance
         tempoInicioAudio = millis();
         ultimoAjusteVolume = millis();
         estadoFisico = TOCANDO_AUDIO;
@@ -447,22 +533,21 @@ void loop() {
     case TOCANDO_AUDIO: {
       unsigned long tempoDecorrido = millis() - tempoInicioAudio;
 
-      if (tempoDecorrido >= 2000 && tempoDecorrido < 3000) {
-        if (millis() - ultimoAjusteVolume >= 150) {
+      if (tempoDecorrido >= 1200 && tempoDecorrido < 1800) {
+        if (millis() - ultimoAjusteVolume >= 100) {
           ultimoAjusteVolume = millis();
-          float progresso = (float)(tempoDecorrido - 2000) / 1000.0;
-          uint8_t volFade = VOLUME_PADRAO - (uint8_t)(progresso * (VOLUME_PADRAO - 3));
+          float progresso = (float)(tempoDecorrido - 1200) / 600.0;
+          uint8_t volFade = VOLUME_PADRAO - (uint8_t)(progresso * (VOLUME_PADRAO - 2));
           setVolume(volFade);
         }
       }
 
-      if (tempoDecorrido >= 3000) {
+      if (tempoDecorrido >= 1800) {
         pararAudio();
         setVolume(VOLUME_PADRAO);
         digitalWrite(PIN_LED_VERDE, LOW);
 
-        // Se completou a sessão (Calibração ou Treino) -> Dispara a requisição final consolidada!
-        if ((modoAtual == MODO_CALIBRACAO || modoAtual == MODO_TREINO) && bolaAtual >= totalBolasSessao) {
+        if (bolaAtual >= totalBolasSessao) {
           finalizarSessao();
         }
 
@@ -472,12 +557,11 @@ void loop() {
     }
 
     case ESPERANDO_ESTABILIZAR:
-      if (anguloAtual < ANGULO_ESTABILIZADO && deltaChoque < 0.25) {
+      if (anguloAtual < ANGULO_REPOUSO) {
         estadoFisico = REPOUSO_PRONTO;
       }
       break;
   }
 
-  forcaGAnterior = forcaG;
   delay(10);
 }

@@ -5,11 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/format.dart';
+import '../../data/mock_data.dart';
+import '../../data/models.dart';
 import '../../router.dart';
+import '../../state/device_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_text.dart';
 import '../../theme/app_tokens.dart';
+import '../../transport/device_transport.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/charts.dart';
 import '../../widgets/layout.dart';
@@ -37,13 +41,43 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
   )..repeat();
 
   Timer? _timer;
+  StreamSubscription<ImpactEvent>? _sub;
   var _segundos = 0;
   var _pausado = false;
+  var _acertos = 0;
+  var _erros = 0;
+
+  Drill get _drill => Mock.treinosTodos.firstWhere(
+        (d) => d.titulo == widget.treino,
+        orElse: () => Mock.reacaoRapida,
+      );
 
   @override
   void initState() {
     super.initState();
     _iniciarTimer();
+    _iniciarTreinoTobias();
+  }
+
+  void _iniciarTreinoTobias() {
+    final d = _drill;
+    DeviceState.transport.send(
+      DeviceCommand.iniciarSessao,
+      lances: d.lances,
+      intervaloSegundos: d.intervaloS,
+      calibracao: DeviceState.calibracao.value,
+    );
+    _sub = DeviceState.transport.events.listen((e) {
+      if (mounted) {
+        setState(() {
+          if (e.resultado == 'erro') {
+            _erros++;
+          } else {
+            _acertos++;
+          }
+        });
+      }
+    });
   }
 
   void _iniciarTimer() {
@@ -58,18 +92,28 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
       _timer?.cancel();
       _pulse.stop();
       _spin.stop();
+      DeviceState.transport.send(DeviceCommand.pausar);
     } else {
       _iniciarTimer();
       _pulse.repeat(reverse: true);
       _spin.repeat();
+      final d = _drill;
+      DeviceState.transport.send(
+        DeviceCommand.retomar,
+        lances: d.lances,
+        intervaloSegundos: d.intervaloS,
+      calibracao: DeviceState.calibracao.value,
+      );
     }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _sub?.cancel();
     _pulse.dispose();
     _spin.dispose();
+    DeviceState.transport.send(DeviceCommand.finalizar);
     super.dispose();
   }
 

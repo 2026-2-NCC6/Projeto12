@@ -75,13 +75,25 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
     _estado = estado;
     switch (estado) {
       case EstadoPareamento.conectando:
-        _timer = Timer(_tempoConexao, () => _ir(EstadoPareamento.conectado));
+        _conectarBle();
       case EstadoPareamento.conectado:
         DeviceState.simulador.value = false;
       case EstadoPareamento.simulador:
         DeviceState.simulador.value = true;
       case EstadoPareamento.busca || EstadoPareamento.falha:
         break;
+    }
+  }
+
+  Future<void> _conectarBle() async {
+    final ok = await DeviceState.bleTransport.connect(
+      timeout: const Duration(seconds: 8),
+    );
+    if (!mounted) return;
+    if (ok) {
+      _ir(EstadoPareamento.conectado);
+    } else {
+      _ir(EstadoPareamento.falha);
     }
   }
 
@@ -195,7 +207,10 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
       (_Passo.pendente, 'Verificando o boneco'),
     ]),
     const Spacer(),
-    AppButton.outline('Cancelar', onPressed: () => _ir(EstadoPareamento.busca)),
+    AppButton.outline('Cancelar', onPressed: () {
+      DeviceState.bleTransport.disconnect();
+      _ir(EstadoPareamento.busca);
+    }),
   ];
 
   // -------------------------------------------------------- 2.3 Conectado

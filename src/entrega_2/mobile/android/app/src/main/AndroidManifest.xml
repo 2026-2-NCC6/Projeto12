@@ -1,6 +1,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Acesso à API de autenticação. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Permissões de Bluetooth e BLE para conexão ao ESP32 Tobias -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="30" />
+
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
     <!-- ATENÇÃO: usesCleartextTraffic="true" libera HTTP sem TLS e existe APENAS
          para desenvolvimento local (emulador → http://10.0.2.2:8000).
          REMOVER antes do deploy em produção (a API real deve usar HTTPS). -->

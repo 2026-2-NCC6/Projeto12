@@ -1,11 +1,12 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Guarda o token de acesso (JWT) e o papel do usuário no armazenamento
-/// local do aparelho via shared_preferences: salvar após o login, ler para
-/// chamar a API e limpar no logout ou quando o token expirar (401).
+/// Guarda o token de acesso (JWT), o papel e a calibração do usuário no
+/// armazenamento local do aparelho via shared_preferences: salvar após o login,
+/// ler para chamar a API e configurar o Tobias, e limpar no logout.
 abstract final class AuthStore {
   static const _chaveToken = 'auth_token';
   static const _chavePapel = 'auth_papel';
+  static const _chaveCalibracao = 'auth_calibracao';
 
   static Future<void> salvarToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
@@ -30,10 +31,23 @@ abstract final class AuthStore {
     return prefs.getString(_chavePapel) == 'admin';
   }
 
-  /// Encerra a sessão: apaga o token e o papel.
+  /// Salva o nível de calibração / acréscimo de dificuldade em graus.
+  static Future<void> salvarCalibracao(double calib) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_chaveCalibracao, calib);
+  }
+
+  /// Devolve a calibração salva, ou 0.0 (padrão fácil).
+  static Future<double> lerCalibracao() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_chaveCalibracao) ?? 0.0;
+  }
+
+  /// Encerra a sessão: apaga token, papel e calibração local.
   static Future<void> limparToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_chaveToken);
     await prefs.remove(_chavePapel);
+    await prefs.remove(_chaveCalibracao);
   }
 }

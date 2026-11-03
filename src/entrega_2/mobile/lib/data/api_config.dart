@@ -1,16 +1,43 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Configuração de acesso à API (FastAPI). A URL base fica só aqui.
+/// Configuração de acesso à API (FastAPI).
 ///
-/// - Web: o navegador roda na mesma máquina da API → `localhost`.
-/// - Emulador Android: `10.0.2.2` é o apelido do emulador para o
-///   `localhost` do computador hospedeiro.
+/// - Web: localhost
+/// - Celular Android: IP local da máquina na rede Wi-Fi (ex: 192.168.15.2:8000)
 abstract final class ApiConfig {
   static const _webUrl = 'http://localhost:8000';
-  static const _androidEmuladorUrl = 'http://10.0.2.2:8000';
+  static const _defaultAndroidUrl = 'http://192.168.15.2:8000';
 
-  static String get baseUrl => kIsWeb ? _webUrl : _androidEmuladorUrl;
+  static String _overrideUrl = '';
+
+  static String get baseUrl {
+    if (_overrideUrl.isNotEmpty) return _overrideUrl;
+    return kIsWeb ? _webUrl : _defaultAndroidUrl;
+  }
+
+  static set baseUrl(String url) {
+    _overrideUrl = url;
+  }
+
+  static Future<void> carregarConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final salvo = prefs.getString('api_base_url');
+      if (salvo != null && salvo.isNotEmpty) {
+        _overrideUrl = salvo;
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> salvarUrl(String url) async {
+    _overrideUrl = url.trim();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('api_base_url', _overrideUrl);
+    } catch (_) {}
+  }
 
   /// Tempo máximo de espera por uma resposta da API.
-  static const timeout = Duration(seconds: 15);
+  static const timeout = Duration(seconds: 10);
 }

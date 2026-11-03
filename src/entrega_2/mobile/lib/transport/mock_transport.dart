@@ -49,7 +49,12 @@ class MockTransport implements DeviceTransport {
   }
 
   @override
-  Future<void> send(DeviceCommand cmd) async {}
+  Future<void> send(
+    DeviceCommand cmd, {
+    int lances = 15,
+    int intervaloSegundos = 3,
+    double calibracao = 0.0,
+  }) async {}
 
   @override
   Future<DeviceStatus> status() async => const DeviceStatus(
@@ -58,4 +63,7 @@ class MockTransport implements DeviceTransport {
     bateria: Mock.deviceBateria,
     simulador: true,
   );
+
+  @override
+  Future<void> disconnect() async {}
 }

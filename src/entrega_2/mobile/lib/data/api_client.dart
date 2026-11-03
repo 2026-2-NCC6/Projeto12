@@ -24,17 +24,24 @@ class ApiException implements Exception {
 
 /// Usuário autenticado, como devolvido por cadastro e `/eu`.
 class UsuarioApi {
-  const UsuarioApi({required this.id, required this.email, required this.papel});
+  const UsuarioApi({
+    required this.id,
+    required this.email,
+    required this.papel,
+    this.calibracao = 0.0,
+  });
 
   factory UsuarioApi.fromJson(Map<String, dynamic> json) => UsuarioApi(
     id: json['id'] as int,
     email: json['email'] as String,
     papel: json['papel'] as String,
+    calibracao: (json['calibracao'] as num?)?.toDouble() ?? 0.0,
   );
 
   final int id;
   final String email;
   final String papel;
+  final double calibracao;
 }
 
 /// Uma página da listagem de treinos (`GET /v1/drills`).
@@ -129,6 +136,21 @@ class ApiClient {
       () => _http.get(
         _uri('/v1/auth/eu'),
         headers: {'Authorization': 'Bearer $token'},
+      ),
+    );
+    return UsuarioApi.fromJson(json);
+  }
+
+  /// PUT /v1/auth/calibracao → atualiza o nível de calibração/dificuldade no backend.
+  Future<UsuarioApi> atualizarCalibracao(String token, double calibracao) async {
+    final json = await _enviar(
+      () => _http.put(
+        _uri('/v1/auth/calibracao'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'calibracao': calibracao}),
       ),
     );
     return UsuarioApi.fromJson(json);

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_client.dart';
+import '../../data/api_config.dart';
 import '../../data/auth_store.dart';
 import '../../data/auth_validacao.dart';
 import '../../router.dart';
+import '../../state/device_state.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_text.dart';
@@ -62,22 +64,57 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _enviando = true);
     try {
       final token = await _api.login(email, senha);
-      // O papel é buscado uma vez aqui e guardado com o token; as telas
-      // leem do AuthStore em vez de chamar /eu de novo.
+      // O papel e a calibração são buscados uma vez aqui e guardados localmente
       final usuario = await _api.eu(token);
       await AuthStore.salvarToken(token);
       await AuthStore.salvarPapel(usuario.papel);
+      await AuthStore.salvarCalibracao(usuario.calibracao);
+      DeviceState.calibracao.value = usuario.calibracao;
+
       if (!mounted) return;
       context.push(Routes.pareamento);
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
-          _erroSenha = e.mensagem;
+          _erroSenha = e.statusCode == null
+              ? '${e.mensagem}\n(Tentando conectar em: ${ApiConfig.baseUrl})'
+              : e.mensagem;
           _credenciaisInvalidas = e.statusCode == 401;
         });
       }
     } finally {
       if (mounted) setState(() => _enviando = false);
+    }
+  }
+
+  Future<void> _alterarServidor(BuildContext context) async {
+    final c = TextEditingController(text: ApiConfig.baseUrl);
+    final novo = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Endereço do Servidor'),
+        content: TextField(
+          controller: c,
+          decoration: const InputDecoration(
+            hintText: 'http://192.168.15.2:8000',
+            labelText: 'URL da API',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, c.text.trim()),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    if (novo != null && novo.isNotEmpty) {
+      await ApiConfig.salvarUrl(novo);
+      if (mounted) setState(() {});
     }
   }
 
@@ -173,6 +210,14 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           TextLink('Criar conta', onTap: criarConta),
                         ],
+                      ),
+                      InkWell(
+                        onTap: () => _alterarServidor(context),
+                        child: Text(
+                          'Servidor: ${ApiConfig.baseUrl} (toque para alterar)',
+                          textAlign: TextAlign.center,
+                          style: AppText.bodyS.c(AppColors.textSecondary),
+                        ),
                       ),
                       Text(
                         'Ao continuar, você concorda com os Termos de Uso e a Política de Privacidade (LGPD).',

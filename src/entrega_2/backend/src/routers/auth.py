@@ -5,7 +5,13 @@ from src.core.deps import usuario_atual
 from src.core.security import conferir_senha, criar_token, gerar_hash
 from src.db.session import get_db
 from src.models.usuario import Papel, Usuario
-from src.schemas.auth import CadastroEntrada, LoginEntrada, TokenSaida, UsuarioSaida
+from src.schemas.auth import (
+    CadastroEntrada,
+    CalibracaoEntrada,
+    LoginEntrada,
+    TokenSaida,
+    UsuarioSaida,
+)
 
 router = APIRouter(prefix="/v1/auth", tags=["autenticacao"])
 
@@ -56,4 +62,17 @@ def login(dados: LoginEntrada, db: Session = Depends(get_db)):
 @router.get("/eu", response_model=UsuarioSaida)
 def quem_sou_eu(usuario: Usuario = Depends(usuario_atual)):
     """Devolve os dados de quem esta com o token."""
+    return usuario
+
+
+@router.put("/calibracao", response_model=UsuarioSaida)
+def atualizar_calibracao(
+    dados: CalibracaoEntrada,
+    usuario: Usuario = Depends(usuario_atual),
+    db: Session = Depends(get_db),
+):
+    """Atualiza o nivel de calibracao / dificuldade fisica do jogador."""
+    usuario.calibracao = dados.calibracao
+    db.commit()
+    db.refresh(usuario)
     return usuario

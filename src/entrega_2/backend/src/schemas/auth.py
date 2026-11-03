@@ -38,5 +38,16 @@ class UsuarioSaida(BaseModel):
     apelido: str
     perfil: Perfil
     papel: str
+    calibracao: float = 0.0
 
     model_config = {"from_attributes": True}
+
+
+class CalibracaoEntrada(BaseModel):
+    """Nivel de calibracao / dificuldade em graus a ser adicionado aos limiares."""
+
+    calibracao: float = Field(
+        ge=0.0,
+        le=45.0,
+        description="Graus adicionais de dificuldade para acertos fortes no Tobias",
+    )
