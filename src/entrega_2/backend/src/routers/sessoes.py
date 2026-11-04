@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -5,14 +7,17 @@ from sqlalchemy.orm import Session
 
 from src.core.auditoria import registrar_auditoria
 from src.core.deps import usuario_atual
+from src.core.totais_sessao import recalcular_totais
 from src.db.session import get_db
-from src.models.sessao import Lance, Sessao, TipoLance
+from src.models.sessao import Lance, Sessao
 from src.models.treino import Treino, TreinoVersao
 from src.models.usuario import Usuario
 from src.routers.treinos import acessivel_para_ingestao
 from src.schemas.sessao import LoteEntrada, LoteSaida, ResumoSessaoSaida, SessaoEntrada
 
 router = APIRouter(prefix="/v1/sessions", tags=["sessoes"])
+
+logger = logging.getLogger("tobias.pontuacao")
 
 
 def versoes_aceitas(db: Session, usuario: Usuario, ids: set[int]) -> set[int]:
@@ -30,33 +35,50 @@ def versoes_aceitas(db: Session, usuario: Usuario, ids: set[int]) -> set[int]:
     )
 
 
-def recalcular_totais(db: Session, sessao: Sessao) -> None:
-    """Recalcula os agregados a partir dos lances gravados.
+def comparar_com_cliente(
+    db: Session,
+    usuario: Usuario,
+    sessao: Sessao,
+    dados: SessaoEntrada,
+    lances_gravados: list[Lance],
+    ip: str | None,
+) -> None:
+    """Alerta se o placar do app diverge do oficial (US-705 / RF23).
 
-    Nunca usa o que o app ou o firmware calcularam. pontuacao_total
-    nao e tocada: a regra de pontuacao e da US-705.
+    So compara quando os lances do payload cobrem todos os gravados: numa
+    sincronizacao parcial o app esta pontuando outro conjunto de lances e
+    a diferenca nao significaria nada. Quem chama garante a outra guarda
+    (a requisicao mudou algo), para um reenvio nao repetir o alerta.
     """
-    lances = db.scalars(
-        select(Lance)
-        .where(Lance.sessao_id == sessao.id)
-        .order_by(Lance.bola, Lance.ts_ms, Lance.id)
-    ).all()
+    if dados.pontuacao_cliente is None:
+        return
 
-    acertos = [l for l in lances if l.resultado == TipoLance.acerto]
-    angulos = [l.angulo for l in acertos if l.angulo is not None]
+    enviados = {l.uuid_lance for l in dados.lances}
+    if not {l.uuid_lance for l in lances_gravados} <= enviados:
+        return
 
-    sequencia = melhor = 0
-    for lance in lances:
-        sequencia = sequencia + 1 if lance.resultado == TipoLance.acerto else 0
-        melhor = max(melhor, sequencia)
+    if dados.pontuacao_cliente == sessao.pontuacao_total:
+        return
 
-    sessao.acertos = len(acertos)
-    sessao.erros = len(lances) - len(acertos)
-    sessao.kos = sum(1 for l in acertos if l.knockout)
-    sessao.melhor_sequencia = melhor
-    sessao.media_angulo = round(sum(angulos) / len(angulos), 1) if angulos else None
-    sessao.max_angulo = max(angulos) if angulos else None
-    sessao.precisao = round(len(acertos) * 100 / len(lances), 1) if lances else None
+    # Sem dados pessoais: so ids internos e numeros.
+    logger.warning(
+        "pontuacao_divergente sessao_id=%s usuario_id=%s pontuacao_servidor=%s "
+        "pontuacao_cliente=%s versao_regra=%s",
+        sessao.id,
+        usuario.id,
+        sessao.pontuacao_total,
+        dados.pontuacao_cliente,
+        sessao.versao_pontuacao,
+        extra={
+            "evento": "pontuacao_divergente",
+            "sessao_id": str(sessao.id),
+            "usuario_id": usuario.id,
+            "pontuacao_servidor": sessao.pontuacao_total,
+            "pontuacao_cliente": dados.pontuacao_cliente,
+            "versao_regra": sessao.versao_pontuacao,
+        },
+    )
+    registrar_auditoria(db, usuario, "pontuacao_divergente", "sessao", sessao.id, ip)
 
 
 def ingerir_sessao(
@@ -71,7 +93,8 @@ def ingerir_sessao(
     - sessao: cria se nao existe para este usuario; se existe, a primeira
       gravacao vence e so encerrada_em e preenchida, se ainda nula;
     - lances: insere so os uuid_lance que a sessao ainda nao tem;
-    - totais: recalculados sempre que algo mudou.
+    - totais e pontuacao: recalculados sempre que algo mudou, e so entao
+      o placar do app e comparado com o oficial.
     """
     recebidos = len(dados.lances)
 
@@ -103,6 +126,7 @@ def ingerir_sessao(
             treino_versao_id=dados.treino_versao_id,
             iniciada_em=dados.iniciada_em,
             encerrada_em=dados.encerrada_em,
+            dificuldade=dados.dificuldade,
         )
         db.add(sessao)
         db.flush()
@@ -146,9 +170,10 @@ def ingerir_sessao(
     db.flush()
 
     if situacao == "inserida" or novos or mudou:
-        recalcular_totais(db, sessao)
+        gravados = recalcular_totais(db, sessao)
         acao = "sessao_inserida" if situacao == "inserida" else "sessao_atualizada"
         registrar_auditoria(db, usuario, acao, "sessao", sessao.id, ip)
+        comparar_com_cliente(db, usuario, sessao, dados, gravados, ip)
         db.flush()
 
     return ResumoSessaoSaida(
@@ -157,6 +182,7 @@ def ingerir_sessao(
         lances_recebidos=recebidos,
         lances_inseridos=len(novos),
         lances_duplicados=recebidos - len(novos),
+        pontuacao_total=sessao.pontuacao_total,
     )
 
 

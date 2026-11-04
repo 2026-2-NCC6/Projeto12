@@ -1,9 +1,21 @@
+import logging
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.admin.painel import montar_painel
 from src.core.config import settings
 from src.routers import admin, auth, sessoes, treinos
+
+# Logs da aplicacao (ex.: alerta de pontuacao divergente) no stdout, que e
+# o que o Azure Container Apps coleta. Sem isto, logger.warning de modulos
+# como "tobias.pontuacao" nao aparece em lugar nenhum.
+logging.basicConfig(
+    level=logging.INFO,
+    stream=sys.stdout,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 app = FastAPI(title="TOBIAS API")
 

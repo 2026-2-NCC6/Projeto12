@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
@@ -9,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Numeric,
     String,
     UniqueConstraint,
     func,
@@ -51,8 +53,17 @@ class Sessao(Base):
     iniciada_em: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     encerrada_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
-    # Fica nulo ate a US-705 (recalculo autoritativo da pontuacao).
+    # Graus somados ao limiar de KO nesta sessao (terceiro parametro do
+    # comando TREINO:qtd:intervalo:calib). E da sessao, nao do usuario:
+    # usuario.calibracao pode mudar entre treinar e sincronizar.
+    dificuldade: Mapped[Decimal] = mapped_column(
+        Numeric(3, 1), default=Decimal("0"), server_default="0"
+    )
+
+    # Calculada pelo servidor (US-705); nula = ainda nao pontuada.
+    # versao_pontuacao diz qual versao da regra gerou o valor.
     pontuacao_total: Mapped[Optional[int]] = mapped_column(default=None)
+    versao_pontuacao: Mapped[Optional[int]] = mapped_column(default=None)
 
     # Agregados sempre recalculados pelo servidor a partir dos lances.
     acertos: Mapped[int] = mapped_column(default=0)
@@ -89,8 +100,11 @@ class Lance(Base):
     sessao_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessao.id"))
     bola: Mapped[int]
     resultado: Mapped[TipoLance] = mapped_column(Enum(TipoLance, name="tipo_lance"))
+    # classe e knockout sao interpretacoes do firmware: guardadas como
+    # vieram, mas a pontuacao nao as usa (recalcula o KO pelo angulo).
     knockout: Mapped[bool] = mapped_column(default=False)
-    angulo: Mapped[Optional[float]] = mapped_column(Float)
+    # Numeric e nao Float: a pontuacao converte para decimos de forma exata.
+    angulo: Mapped[Optional[Decimal]] = mapped_column(Numeric(4, 1))
     classe: Mapped[Optional[ClasseImpacto]] = mapped_column(
         Enum(ClasseImpacto, name="classe_impacto")
     )

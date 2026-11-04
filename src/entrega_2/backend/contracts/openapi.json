@@ -821,9 +821,16 @@
             "default": false
           },
           "angulo": {
-            "type": "number",
-            "maximum": 180.0,
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 180.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
             "title": "Angulo"
           },
           "ts_ms": {
@@ -1020,6 +1027,17 @@
           "lances_duplicados": {
             "type": "integer",
             "title": "Lances Duplicados"
+          },
+          "pontuacao_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pontuacao Total"
           }
         },
         "type": "object",
@@ -1069,6 +1087,33 @@
             "type": "array",
             "maxItems": 500,
             "title": "Lances"
+          },
+          "dificuldade": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 45.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Dificuldade",
+            "default": "0"
+          },
+          "pontuacao_cliente": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 1000000.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pontuacao Cliente"
           }
         },
         "type": "object",

@@ -1,5 +1,6 @@
 import uuid
 from datetime import timezone
+from decimal import Decimal
 from typing import Literal, Optional
 
 from pydantic import AwareDatetime, BaseModel, Field, field_validator, model_validator
@@ -8,6 +9,9 @@ from src.models.sessao import ClasseImpacto, TipoLance
 
 # Limite da coluna ts_ms (INTEGER de 32 bits): ~24 dias de sessao.
 TS_MS_MAXIMO = 2_147_483_647
+
+# Maior total possivel: 500 lances x (100 x 200% + 75 de KO) = 137.500.
+PONTUACAO_MAXIMA = 1_000_000
 
 
 class LanceEntrada(BaseModel):
@@ -18,8 +22,12 @@ class LanceEntrada(BaseModel):
     bola: int = Field(ge=1, le=500)
     resultado: TipoLance
     classe: ClasseImpacto
+    # classe e knockout sao interpretacoes do firmware: aceitos e
+    # guardados, mas a pontuacao nao os usa (o KO e recalculado).
     knockout: bool = False
-    angulo: float = Field(ge=0, le=180)
+    # Decimal com no maximo 1 casa, lido direto do texto do JSON: a
+    # conversao para decimos de grau e exata por construcao (US-705).
+    angulo: Decimal = Field(ge=0, le=180, decimal_places=1)
     ts_ms: int = Field(ge=0, le=TS_MS_MAXIMO)
 
     @model_validator(mode="after")
@@ -57,6 +65,14 @@ class SessaoEntrada(BaseModel):
     encerrada_em: Optional[AwareDatetime] = None
     lances: list[LanceEntrada] = Field(default_factory=list, max_length=500)
 
+    # Graus somados ao limiar de KO nesta sessao (TREINO:qtd:intervalo:calib).
+    # Mesma faixa do CalibracaoEntrada. Imutavel apos a primeira gravacao.
+    dificuldade: Decimal = Field(default=Decimal("0"), ge=0, le=45, decimal_places=1)
+
+    # Placar que o app calculou. So e comparado com o do servidor para
+    # detectar divergencia; nunca e gravado como pontuacao oficial.
+    pontuacao_cliente: Optional[int] = Field(default=None, ge=0, le=PONTUACAO_MAXIMA)
+
     @field_validator("iniciada_em", "encerrada_em")
     @classmethod
     def em_utc(cls, valor):
@@ -93,6 +109,9 @@ class ResumoSessaoSaida(BaseModel):
     lances_recebidos: int
     lances_inseridos: int
     lances_duplicados: int
+    # Pontuacao oficial, calculada pelo servidor; o app deve exibir esta.
+    # Nula quando a sessao foi rejeitada.
+    pontuacao_total: Optional[int] = None
 
 
 class LoteSaida(BaseModel):
