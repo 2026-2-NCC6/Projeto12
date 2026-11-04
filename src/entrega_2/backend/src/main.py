@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from src.admin.painel import montar_painel
 from src.core.config import settings
-from src.routers import admin, auth, treinos
+from src.routers import admin, auth, sessoes, treinos
 
 app = FastAPI(title="TOBIAS API")
 
@@ -17,6 +17,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(treinos.router)
+app.include_router(sessoes.router)
 app.include_router(admin.router)
 
 montar_painel(app, settings.admin_secret)

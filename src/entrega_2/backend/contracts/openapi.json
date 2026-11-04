@@ -116,6 +116,53 @@
         ]
       }
     },
+    "/v1/auth/calibracao": {
+      "put": {
+        "tags": [
+          "autenticacao"
+        ],
+        "summary": "Atualizar Calibracao",
+        "description": "Atualiza o nivel de calibracao / dificuldade fisica do jogador.",
+        "operationId": "atualizar_calibracao_v1_auth_calibracao_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CalibracaoEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsuarioSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/v1/drills": {
       "get": {
         "tags": [
@@ -514,6 +561,53 @@
         }
       }
     },
+    "/v1/sessions": {
+      "post": {
+        "tags": [
+          "sessoes"
+        ],
+        "summary": "Ingerir",
+        "description": "Recebe um lote de sessoes do app (US-704 / RF19), de forma idempotente.\n\nReenviar o mesmo lote nao duplica nada. O codigo HTTP descreve o\nlote: e sempre 200, e o resultado de cada sessao vem em `situacao`.\n422 so para payload malformado, antes de qualquer acesso ao banco.\nO dono das sessoes e quem esta com o token, nunca o corpo.",
+        "operationId": "ingerir_v1_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoteEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoteSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/v1/admin/usuarios": {
       "get": {
         "tags": [
@@ -579,6 +673,7 @@
     "/health": {
       "get": {
         "summary": "Health",
+        "description": "Usado pelo Container Apps e pelo aquecimento antes da demo (US-1004).",
         "operationId": "health_health_get",
         "responses": {
           "200": {
@@ -641,6 +736,33 @@
         "title": "CadastroEntrada",
         "description": "Dados que o aplicativo envia para criar uma conta."
       },
+      "CalibracaoEntrada": {
+        "properties": {
+          "calibracao": {
+            "type": "number",
+            "maximum": 45.0,
+            "minimum": 0.0,
+            "title": "Calibracao",
+            "description": "Graus adicionais de dificuldade para acertos fortes no Tobias"
+          }
+        },
+        "type": "object",
+        "required": [
+          "calibracao"
+        ],
+        "title": "CalibracaoEntrada",
+        "description": "Nivel de calibracao / dificuldade em graus a ser adicionado aos limiares."
+      },
+      "ClasseImpacto": {
+        "type": "string",
+        "enum": [
+          "fraco",
+          "medio",
+          "forte",
+          "sem_impacto"
+        ],
+        "title": "ClasseImpacto"
+      },
       "Escopo": {
         "type": "string",
         "enum": [
@@ -662,6 +784,67 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "LanceEntrada": {
+        "properties": {
+          "uuid_lance": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Uuid Lance"
+          },
+          "id_lance_firmware": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Lance Firmware"
+          },
+          "bola": {
+            "type": "integer",
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Bola"
+          },
+          "resultado": {
+            "$ref": "#/components/schemas/TipoLance"
+          },
+          "classe": {
+            "$ref": "#/components/schemas/ClasseImpacto"
+          },
+          "knockout": {
+            "type": "boolean",
+            "title": "Knockout",
+            "default": false
+          },
+          "angulo": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": 0.0,
+            "title": "Angulo"
+          },
+          "ts_ms": {
+            "type": "integer",
+            "maximum": 2147483647.0,
+            "minimum": 0.0,
+            "title": "Ts Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uuid_lance",
+          "bola",
+          "resultado",
+          "classe",
+          "angulo",
+          "ts_ms"
+        ],
+        "title": "LanceEntrada",
+        "description": "Um lance como o app recebeu do firmware, mais o UUID do app."
+      },
       "LoginEntrada": {
         "properties": {
           "email": {
@@ -680,6 +863,40 @@
           "senha"
         ],
         "title": "LoginEntrada"
+      },
+      "LoteEntrada": {
+        "properties": {
+          "sessoes": {
+            "items": {
+              "$ref": "#/components/schemas/SessaoEntrada"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Sessoes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sessoes"
+        ],
+        "title": "LoteEntrada"
+      },
+      "LoteSaida": {
+        "properties": {
+          "sessoes": {
+            "items": {
+              "$ref": "#/components/schemas/ResumoSessaoSaida"
+            },
+            "type": "array",
+            "title": "Sessoes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "sessoes"
+        ],
+        "title": "LoteSaida"
       },
       "Nivel": {
         "type": "string",
@@ -763,6 +980,113 @@
           "infantil"
         ],
         "title": "Perfil"
+      },
+      "ResumoSessaoSaida": {
+        "properties": {
+          "uuid_sessao": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Uuid Sessao"
+          },
+          "situacao": {
+            "type": "string",
+            "enum": [
+              "inserida",
+              "ja_existia",
+              "rejeitada"
+            ],
+            "title": "Situacao"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "versao_invalida"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "lances_recebidos": {
+            "type": "integer",
+            "title": "Lances Recebidos"
+          },
+          "lances_inseridos": {
+            "type": "integer",
+            "title": "Lances Inseridos"
+          },
+          "lances_duplicados": {
+            "type": "integer",
+            "title": "Lances Duplicados"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uuid_sessao",
+          "situacao",
+          "lances_recebidos",
+          "lances_inseridos",
+          "lances_duplicados"
+        ],
+        "title": "ResumoSessaoSaida",
+        "description": "Resultado do processamento de uma sessao do lote.\n\n`motivo` e generico de proposito: \"versao_invalida\" cobre tanto a\nversao que nao existe quanto a de outro dono, para nao revelar qual."
+      },
+      "SessaoEntrada": {
+        "properties": {
+          "uuid_sessao": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Uuid Sessao"
+          },
+          "treino_versao_id": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Treino Versao Id"
+          },
+          "iniciada_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Iniciada Em"
+          },
+          "encerrada_em": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrada Em"
+          },
+          "lances": {
+            "items": {
+              "$ref": "#/components/schemas/LanceEntrada"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Lances"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uuid_sessao",
+          "treino_versao_id",
+          "iniciada_em"
+        ],
+        "title": "SessaoEntrada",
+        "description": "Uma sessao do lote.\n\nAgregados (acertos, kos, precisao...) nao fazem parte do contrato:\nse o cliente mandar, sao ignorados e o servidor recalcula."
+      },
+      "TipoLance": {
+        "type": "string",
+        "enum": [
+          "acerto",
+          "erro"
+        ],
+        "title": "TipoLance"
       },
       "TokenSaida": {
         "properties": {
@@ -925,6 +1249,11 @@
           "papel": {
             "type": "string",
             "title": "Papel"
+          },
+          "calibracao": {
+            "type": "number",
+            "title": "Calibracao",
+            "default": 0.0
           }
         },
         "type": "object",
@@ -981,6 +1310,10 @@
       },
       "VersaoSaida": {
         "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
           "numero": {
             "type": "integer",
             "title": "Numero"
@@ -1008,6 +1341,7 @@
         },
         "type": "object",
         "required": [
+          "id",
           "numero",
           "nivel",
           "qtd_lances",
@@ -1016,7 +1350,7 @@
           "publicado_em"
         ],
         "title": "VersaoSaida",
-        "description": "Os parametros de um treino em uma versao."
+        "description": "Os parametros de um treino em uma versao.\n\n`id` e o que o app guarda ao iniciar o treino e manda em\nPOST /v1/sessions: a sessao fica presa a versao que foi jogada,\nmesmo que o treino seja editado antes da sincronizacao."
       }
     },
     "securitySchemes": {
