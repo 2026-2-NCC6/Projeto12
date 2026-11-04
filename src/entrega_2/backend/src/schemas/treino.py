@@ -7,8 +7,14 @@ from src.models.treino import Escopo, Nivel
 
 
 class VersaoSaida(BaseModel):
-    """Os parametros de um treino em uma versao."""
+    """Os parametros de um treino em uma versao.
 
+    `id` e o que o app guarda ao iniciar o treino e manda em
+    POST /v1/sessions: a sessao fica presa a versao que foi jogada,
+    mesmo que o treino seja editado antes da sincronizacao.
+    """
+
+    id: int
     numero: int
     nivel: Nivel
     qtd_lances: int

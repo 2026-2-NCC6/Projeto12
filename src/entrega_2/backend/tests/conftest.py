@@ -35,6 +35,13 @@ def cliente():
 
 
 @pytest.fixture
+def abrir_db():
+    """Abre sessoes no mesmo banco que o `cliente` usa, para conferir o
+    que foi gravado. Fixture pelo mesmo motivo de `promover_admin`."""
+    return SessionTeste
+
+
+@pytest.fixture
 def promover_admin():
     """Promove um usuario a admin direto no banco de teste.
 

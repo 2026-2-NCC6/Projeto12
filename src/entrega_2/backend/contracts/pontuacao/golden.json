@@ -1,0 +1,255 @@
+{
+  "versao_regra": 1,
+  "descricao": "Golden fixtures da regra de pontuacao do TOBIAS (US-705). Contrato entre a implementacao Python (backend/src/core/pontuacao.py) e a Dart (US-606): as duas precisam produzir exatamente o 'esperado' de cada caso.",
+  "regras_de_conversao": {
+    "precisao": "angulo e dificuldade tem no maximo 1 casa decimal; mais que isso e rejeitado (422 na API)",
+    "decimos": "angulo e dificuldade entram na conta em decimos de grau, como inteiros",
+    "python": "ler como Decimal (nunca float) e fazer int(valor * 10)",
+    "dart": "(valor * 10).round()",
+    "aritmetica": "somente inteiros; nenhuma divisao com operando negativo; nenhum round() na formula"
+  },
+  "ordem": "os lances sao ordenados por 'bola' crescente (ordenacao estavel); 'pontos_por_lance' segue essa ordem",
+  "entrada": "cada lance tem apenas bola, resultado ('acerto' | 'erro') e angulo. 'classe' e 'knockout' NAO fazem parte da entrada: o KO e calculado (angulo_decimos >= 580 + dificuldade_decimos)",
+  "casos": [
+    {
+      "id": "acerto-fraco-sem-sequencia",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 25.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [20],
+        "pontuacao_total": 20,
+        "melhor_sequencia": 1,
+        "kos": 0
+      }
+    },
+    {
+      "id": "sessao-vazia",
+      "dificuldade": 0.0,
+      "lances": [],
+      "esperado": {
+        "pontos_por_lance": [],
+        "pontuacao_total": 0,
+        "melhor_sequencia": 0,
+        "kos": 0
+      }
+    },
+    {
+      "id": "so-erros-total-truncado-em-zero",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "erro", "angulo": 0.0 },
+        { "bola": 2, "resultado": "erro", "angulo": 0.0 },
+        { "bola": 3, "resultado": "erro", "angulo": 0.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [-20, -20, -20],
+        "pontuacao_total": 0,
+        "melhor_sequencia": 0,
+        "kos": 0
+      }
+    },
+    {
+      "id": "acerto-seguido-de-erros-truncado-em-zero",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 2, "resultado": "erro", "angulo": 0.0 },
+        { "bola": 3, "resultado": "erro", "angulo": 0.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [20, -20, -20],
+        "pontuacao_total": 0,
+        "melhor_sequencia": 1,
+        "kos": 0
+      }
+    },
+    {
+      "id": "exemplo-especificacao-45-graus-sequencia-3",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 2, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 3, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 4, "resultado": "acerto", "angulo": 45.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [20, 22, 24, 100],
+        "pontuacao_total": 166,
+        "melhor_sequencia": 4,
+        "kos": 0
+      }
+    },
+    {
+      "id": "exemplo-especificacao-ko-60-graus-sequencia-7",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 2, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 3, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 4, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 5, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 6, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 7, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 8, "resultado": "acerto", "angulo": 60.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [20, 22, 24, 26, 28, 30, 32, 245],
+        "pontuacao_total": 427,
+        "melhor_sequencia": 8,
+        "kos": 1
+      }
+    },
+    {
+      "id": "teto-da-sequencia-em-10",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 2, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 3, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 4, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 5, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 6, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 7, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 8, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 9, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 10, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 11, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 12, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 13, "resultado": "acerto", "angulo": 50.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [86, 94, 103, 111, 120, 129, 137, 146, 154, 163, 172, 172, 172],
+        "pontuacao_total": 1759,
+        "melhor_sequencia": 13,
+        "kos": 0
+      }
+    },
+    {
+      "id": "erro-no-meio-zera-a-sequencia",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 2, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 3, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 4, "resultado": "erro", "angulo": 0.0 },
+        { "bola": 5, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 6, "resultado": "acerto", "angulo": 50.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [86, 94, 103, -20, 86, 94],
+        "pontuacao_total": 443,
+        "melhor_sequencia": 3,
+        "kos": 0
+      }
+    },
+    {
+      "id": "angulo-acima-do-teto-satura",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 90.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [175],
+        "pontuacao_total": 175,
+        "melhor_sequencia": 1,
+        "kos": 1
+      }
+    },
+    {
+      "id": "limiar-de-ko-exato-58-graus",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 57.9 },
+        { "bola": 2, "resultado": "acerto", "angulo": 58.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [99, 185],
+        "pontuacao_total": 284,
+        "melhor_sequencia": 2,
+        "kos": 1
+      }
+    },
+    {
+      "id": "abaixo-do-piso-e-no-piso",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 15.0 },
+        { "bola": 2, "resultado": "acerto", "angulo": 22.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [10, 11],
+        "pontuacao_total": 21,
+        "melhor_sequencia": 2,
+        "kos": 0
+      }
+    },
+    {
+      "id": "dificuldade-desloca-o-teto",
+      "dificuldade": 10.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 60.0 },
+        { "bola": 2, "resultado": "acerto", "angulo": 68.0 },
+        { "bola": 3, "resultado": "acerto", "angulo": 25.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [89, 185, 21],
+        "pontuacao_total": 295,
+        "melhor_sequencia": 3,
+        "kos": 1
+      }
+    },
+    {
+      "id": "dificuldade-com-meio-grau",
+      "dificuldade": 12.5,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 45.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [65],
+        "pontuacao_total": 65,
+        "melhor_sequencia": 1,
+        "kos": 0
+      }
+    },
+    {
+      "id": "lances-fora-de-ordem-sao-ordenados-por-bola",
+      "dificuldade": 0.0,
+      "lances": [
+        { "bola": 3, "resultado": "acerto", "angulo": 45.0 },
+        { "bola": 1, "resultado": "acerto", "angulo": 25.0 },
+        { "bola": 2, "resultado": "erro", "angulo": 0.0 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [20, -20, 77],
+        "pontuacao_total": 77,
+        "melhor_sequencia": 1,
+        "kos": 0
+      }
+    },
+    {
+      "id": "sessao-longa-misturando-tudo",
+      "dificuldade": 5.0,
+      "lances": [
+        { "bola": 1, "resultado": "acerto", "angulo": 30.0 },
+        { "bola": 2, "resultado": "acerto", "angulo": 45.0 },
+        { "bola": 3, "resultado": "acerto", "angulo": 63.0 },
+        { "bola": 4, "resultado": "erro", "angulo": 0.0 },
+        { "bola": 5, "resultado": "erro", "angulo": 0.0 },
+        { "bola": 6, "resultado": "acerto", "angulo": 50.0 },
+        { "bola": 7, "resultado": "acerto", "angulo": 62.9 },
+        { "bola": 8, "resultado": "acerto", "angulo": 22.0 },
+        { "bola": 9, "resultado": "acerto", "angulo": 70.0 },
+        { "bola": 10, "resultado": "erro", "angulo": 0.0 },
+        { "bola": 11, "resultado": "acerto", "angulo": 38.5 }
+      ],
+      "esperado": {
+        "pontos_por_lance": [34, 78, 195, -20, -20, 80, 108, 12, 205, -20, 60],
+        "pontuacao_total": 712,
+        "melhor_sequencia": 4,
+        "kos": 2
+      }
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.orm import Session
 
 from src.core.deps import usuario_atual
@@ -35,6 +35,24 @@ def visiveis_para(usuario: Usuario):
             Treino.escopo == Escopo.catalogo,
             Treino.owner_id == usuario.id,
         ),
+    )
+
+
+def acessivel_para_ingestao(usuario: Usuario):
+    """Treinos cujas versoes podem receber sessoes deste usuario.
+
+    Diferente de `visiveis_para` DE PROPOSITO: aqui os treinos apagados
+    continuam valendo. O jogador pode treinar offline e o treino ser
+    apagado antes da sincronizacao; a exclusao logica existe justamente
+    para o historico nao quebrar, entao recusar essa sessao seria perder
+    dado real. Nao "corrija" isto para filtrar apagado_em.
+    """
+    if usuario.papel == Papel.admin:
+        return true()
+
+    return or_(
+        Treino.escopo == Escopo.catalogo,
+        Treino.owner_id == usuario.id,
     )
 
 
