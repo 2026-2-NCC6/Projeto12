@@ -96,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
         content: TextField(
           controller: c,
           decoration: const InputDecoration(
-            hintText: 'http://192.168.15.2:8000',
+            hintText: 'https://…',
             labelText: 'URL da API',
           ),
         ),

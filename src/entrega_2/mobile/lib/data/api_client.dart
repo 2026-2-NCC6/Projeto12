@@ -90,6 +90,14 @@ class ApiClient {
 
   Uri _uri(String caminho) => Uri.parse('${ApiConfig.baseUrl}$caminho');
 
+  /// GET /health só para acordar a API (que dorme quando ociosa). Ignora
+  /// qualquer resultado ou erro; chame sem `await` para não bloquear a UI.
+  Future<void> acordarApi() async {
+    try {
+      await _http.get(_uri('/health')).timeout(ApiConfig.timeout);
+    } catch (_) {}
+  }
+
   /// POST /v1/auth/cadastro → 201 com o usuário criado. [dataNascimento]
   /// vai como AAAA-MM-DD; [perfil] é casual, iniciante ou infantil.
   /// 409 = e-mail ou apelido já usados (ver `detail`).
