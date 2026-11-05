@@ -38,8 +38,6 @@ const _rotas = [
   Routes.historico,
   Routes.historicoDetalhe,
   Routes.historicoDashboard,
-  Routes.historicoPendentes,
-  Routes.historicoMes,
   Routes.perfil,
   Routes.perfilRecalibrar,
   Routes.perfilNotificacoes,
@@ -290,8 +288,6 @@ void main() {
     expect(find.text('Minha sequência'), findsOneWidget);
 
     await _tocar(tester, 'Histórico');
-    await _tocar(tester, 'Pendentes');
-    expect(find.text('2 sessões aguardando envio'), findsOneWidget);
     await _tocar(tester, 'Dashboard');
     expect(find.text('Distribuição dos lances'), findsOneWidget);
 

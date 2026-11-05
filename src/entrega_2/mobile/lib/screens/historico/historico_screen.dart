@@ -1,41 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../data/format.dart';
-import '../../data/mock_data.dart';
+import '../../data/fila_sessoes.dart';
+import '../../data/models.dart';
+import '../../data/resumo_sessao.dart';
 import '../../router.dart';
 import '../../theme/app_colors.dart';
-import '../../theme/app_icons.dart';
 import '../../theme/app_text.dart';
-import '../../theme/app_tokens.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/cards.dart';
 import '../../widgets/controls.dart';
 import '../../widgets/layout.dart';
 
-enum FiltroHistorico { todas, mes, pendentes }
+/// 5.1 Histórico · Sessões (22:852), com as sessões guardadas no aparelho.
+///
+/// Uma lista só, da mais recente para a mais antiga: pendentes (RF21: quem
+/// treinou sem rede tem de ver que treinou), sincronizadas e as separadas
+/// por erro. Sem filtro por período: com no máximo ~30 sessões locais seria
+/// enfeite. O RF13 completo (por período, independente de aparelho) pede um
+/// `GET /v1/sessions`, que ainda não existe.
+class HistoricoScreen extends StatefulWidget {
+  const HistoricoScreen({super.key, this.fila});
 
-/// 5.1 Histórico · Sessões (22:852), 5.5 Este mês (63:1991),
-/// 5.4 Pendentes (59:1726).
-class HistoricoScreen extends StatelessWidget {
-  const HistoricoScreen({super.key, required this.filtro});
+  /// Nos testes, uma fila isolada.
+  final FilaSessoes? fila;
 
-  final FiltroHistorico filtro;
+  @override
+  State<HistoricoScreen> createState() => _HistoricoScreenState();
+}
 
-  static const _rotas = [
-    Routes.historico,
-    Routes.historicoMes,
-    Routes.historicoPendentes,
-  ];
+class _HistoricoScreenState extends State<HistoricoScreen> {
+  FilaSessoes get _fila => widget.fila ?? FilaSessoes.doApp;
+
+  /// Nulo enquanto carrega. Relido quando a fila muda (ex.: um envio
+  /// terminou e a pendente virou sincronizada).
+  List<Session>? _sessoes;
+
+  @override
+  void initState() {
+    super.initState();
+    _fila.alteracoes.addListener(_carregar);
+    _carregar();
+  }
+
+  @override
+  void dispose() {
+    _fila.alteracoes.removeListener(_carregar);
+    super.dispose();
+  }
+
+  Future<void> _carregar() async {
+    final sessoes = [for (final s in await _fila.historico()) itemDoHistorico(s)];
+    if (mounted) setState(() => _sessoes = sessoes);
+  }
 
   @override
   Widget build(BuildContext context) {
-    final sessoes = switch (filtro) {
-      FiltroHistorico.todas => Mock.sessoesTodas,
-      FiltroHistorico.mes => Mock.sessoesMes,
-      FiltroHistorico.pendentes => Mock.sessoesPendentes,
-    };
-
+    final sessoes = _sessoes;
     return SafeArea(
       bottom: false,
       child: Column(
@@ -54,14 +75,15 @@ class HistoricoScreen extends StatelessWidget {
                   leftActive: true,
                   onRight: () => context.go(Routes.historicoDashboard),
                 ),
+                // Não é detalhe de implementação: se o app for reinstalado,
+                // estas sessões somem, e a pessoa precisa ter sido avisada.
+                Text(
+                  'Últimas sessões deste aparelho. Não voltam se o app for '
+                  'reinstalado.',
+                  style: AppText.bodyS.c(AppColors.textSecondary),
+                ),
               ],
             ),
-          ),
-          ChipBar(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            labels: const ['Todas', 'Este mês', 'Pendentes'],
-            selected: filtro.index,
-            onSelected: (i) => context.go(_rotas[i]),
           ),
           Expanded(
             child: ScrollFill(
@@ -70,28 +92,28 @@ class HistoricoScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: 12,
                 children: [
-                  if (filtro == FiltroHistorico.pendentes)
-                    InfoBanner(
-                      icon: AppIcons.cloudOff,
-                      tone: InfoTone.warning,
-                      title: '${sessoes.length} sessões aguardando envio',
-                      body:
-                          'Estão salvas no seu celular e serão enviadas quando houver internet. A pontuação é provisória até o servidor confirmar.',
+                  if (sessoes == null)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 32),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: AppColors.bgBrand,
+                        ),
+                      ),
+                    )
+                  else if (sessoes.isEmpty) ...[
+                    const SizedBox(height: 32),
+                    Text(
+                      'Nenhuma sessão neste aparelho ainda.',
+                      style: AppText.titleM,
+                      textAlign: TextAlign.center,
                     ),
-                  if (filtro == FiltroHistorico.mes) const _ResumoMes(),
-                  for (final s in sessoes)
-                    SessionCard(
-                      session: s,
-                      onTap: () => context.push(Routes.historicoDetalhe),
-                    ),
-                  if (filtro == FiltroHistorico.pendentes) ...[
-                    const Spacer(),
                     AppButton(
-                      'Sincronizar agora',
-                      icon: AppIcons.refreshCw,
-                      onPressed: () {},
+                      'Nova sessão',
+                      onPressed: () => context.push(Routes.sessao),
                     ),
-                  ],
+                  ] else
+                    for (final s in sessoes) SessionCard(session: s),
                 ],
               ),
             ),
@@ -102,43 +124,27 @@ class HistoricoScreen extends StatelessWidget {
   }
 }
 
-class _ResumoMes extends StatelessWidget {
-  const _ResumoMes();
+const _meses = [
+  'JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN',
+  'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ',
+];
 
-  @override
-  Widget build(BuildContext context) {
-    Widget metrica(String valor, String rotulo) => Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(valor, style: AppText.headlineM.c(AppColors.textOnBrand)),
-        Text(rotulo, style: AppText.labelM.c(AppColors.textOnBrandMuted)),
-      ],
-    );
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppColors.bgBrand,
-        borderRadius: BorderRadius.circular(AppRadius.r20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: 8,
-        children: [
-          Text(
-            Mock.mesTitulo,
-            style: AppText.labelL.c(AppColors.textOnBrandMuted),
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              metrica('${Mock.mesSessoes}', 'sessões'),
-              metrica(fmtInt(Mock.mesPontos), 'pontos'),
-              metrica('${Mock.mesPrecisao}%', 'precisão média'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+/// O cartão do histórico para uma sessão guardada: data local, nome do
+/// treino, pontuação exibida (a oficial, se sincronizada) e precisão.
+@visibleForTesting
+Session itemDoHistorico(SessaoLocal s) {
+  final inicio = DateTime.parse(s.iniciadaEm).toLocal();
+  final resumo = ResumoSessao.de(s);
+  return Session(
+    id: s.uuidSessao,
+    dia: inicio.day,
+    mes: _meses[inicio.month - 1],
+    // Sessões gravadas antes da etapa 7 não guardavam o nome do treino.
+    drillTitulo: s.treinoTitulo ?? 'Treino',
+    lances: resumo.lances,
+    precisao: ((resumo.precisao ?? 0) * 100).round(),
+    pontos: s.pontuacaoExibida,
+    sincronizada: s.sincronizada,
+    separada: s.falha != null,
+  );
 }

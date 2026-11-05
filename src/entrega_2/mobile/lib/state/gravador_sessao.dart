@@ -68,6 +68,7 @@ class GravadorSessao {
         treinoVersaoId: sessao.treinoVersaoId,
         dificuldade: sessao.dificuldade,
         iniciadaEm: isoComFuso(_agora()),
+        treinoTitulo: sessao.titulo,
       ),
     );
     _relogio.start();

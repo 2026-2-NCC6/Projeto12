@@ -308,6 +308,8 @@ void main() {
       // Locais, da etapa 5 (não vão no corpo do envio).
       'pontuacao_servidor',
       'falha',
+      // Local, da etapa 7 (nome do treino para o histórico).
+      'treino_titulo',
       'lances',
     });
     expect((s['lances'] as List).first.keys.toSet(), {

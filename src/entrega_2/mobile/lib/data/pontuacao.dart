@@ -30,6 +30,11 @@ const piso = 220;
 /// 58,0° — ANGULO_KO do firmware, deslocado pela dificuldade da sessão.
 const tetoBase = 580;
 
+/// 38,0° — ANGULO_MEDIO do firmware, deslocado pela dificuldade da sessão.
+/// Não entra na pontuação: só separa as faixas fraco/médio da estatística
+/// ([faixaDoAcerto]).
+const limiarMedioBase = 380;
+
 const _escala = 1000;
 const bonusKo = 75;
 const penalidadeErro = -20;
@@ -88,6 +93,31 @@ int decimos(num graus) {
 }
 
 int tetoDaSessao(int dificuldadeDecimos) => tetoBase + dificuldadeDecimos;
+
+int limiarMedioDaSessao(int dificuldadeDecimos) =>
+    limiarMedioBase + dificuldadeDecimos;
+
+/// Faixas de intensidade de um acerto. O KO É a faixa forte.
+enum FaixaIntensidade { fraco, medio, ko }
+
+/// A faixa de um acerto pelo ÂNGULO, com os limiares da sessão:
+///
+///     fraco : angulo <  limiar médio
+///     medio : limiar médio <= angulo < teto
+///     ko    : angulo >= teto
+///
+/// Mutuamente exclusivas: fracos + médios + KO = acertos. Nunca pelo campo
+/// `classe` do dispositivo, pelo mesmo motivo do KO: é interpretação do
+/// cliente, e estatística que depende dela depende de confiança nele.
+FaixaIntensidade faixaDoAcerto(int anguloDecimos, int dificuldadeDecimos) {
+  if (anguloDecimos >= tetoDaSessao(dificuldadeDecimos)) {
+    return FaixaIntensidade.ko;
+  }
+  if (anguloDecimos >= limiarMedioDaSessao(dificuldadeDecimos)) {
+    return FaixaIntensidade.medio;
+  }
+  return FaixaIntensidade.fraco;
+}
 
 /// I = min(1000, max(0, angulo − piso) · 1000 ~/ (teto − piso)).
 int intensidade(int anguloDecimos, int teto) {

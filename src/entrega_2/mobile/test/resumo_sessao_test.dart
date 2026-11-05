@@ -58,6 +58,46 @@ SessaoLocal _sessao(List<LanceLocal> lances) => SessaoLocal(
 );
 
 void main() {
+  group('faixas de intensidade, pelo ângulo', () {
+    test('invariante: fracos + médios + KO = acertos; acertos + erros = lances', () {
+      // Dificuldade 2,0: médio a partir de 40,0°, KO a partir de 60,0°.
+      // A `classe` de cada lance está ERRADA de propósito (tudo "medio",
+      // como o simulador carimba): as faixas não podem depender dela.
+      _n = 0;
+      final s = SessaoLocal(
+        uuidSessao: 'faixas',
+        treinoVersaoId: 1,
+        dificuldade: 2.0,
+        iniciadaEm: '2026-11-05T10:00:00.000Z',
+        lances: [
+          _lance('acerto', 25.0, 'medio'), // fraco
+          _lance('acerto', 39.9, 'medio'), // fraco (logo abaixo do médio)
+          _lance('acerto', 40.0, 'medio'), // médio (no limiar)
+          _lance('acerto', 59.9, 'medio'), // médio (logo abaixo do KO)
+          _lance('acerto', 60.0, 'medio'), // KO (no teto)
+          _lance('acerto', 72.5, 'medio'), // KO
+          _erro(),
+          _erro(),
+        ],
+      );
+
+      final r = ResumoSessao.de(s);
+
+      expect((r.fracos, r.medios, r.kos), (2, 2, 2));
+      expect(r.fracos + r.medios + r.kos, r.acertos);
+      expect(r.acertos + r.erros, r.lances);
+      expect(r.lances, s.lances.length);
+      // O KO das faixas é o mesmo da pontuação.
+      expect(r.kos, s.pontuar().kos);
+    });
+
+    test('a invariante vale também no caso golden', () {
+      final r = ResumoSessao.de(_sessaoLonga());
+      expect(r.fracos + r.medios + r.kos, r.acertos);
+      expect(r.acertos + r.erros, r.lances);
+    });
+  });
+
   group('placar exibido', () {
     test('pendente: o local, mesmo que já haja número do servidor', () {
       // Ex.: chegou lance depois do envio; o servidor pontuou outra versão.
@@ -92,7 +132,10 @@ void main() {
 
     expect((r.lances, r.acertos, r.erros), (11, 8, 3));
     expect(r.precisao, closeTo(8 / 11, 1e-12));
-    expect((r.fracos, r.medios, r.fortes), (3, 2, 3));
+    // Faixas pelo ângulo (médio a partir de 43,0°, KO a partir de 63,0°),
+    // e não pela classe carimbada: 30/22/38,5 fracos; 45/50/62,9 médios
+    // (62,9 é "forte" na classe, mas não chega ao KO); 63/70 KO.
+    expect((r.fracos, r.medios, r.kos), (3, 3, 2));
     // (30 + 45 + 63 + 50 + 62,9 + 22 + 70 + 38,5) / 8 = 381,4 / 8
     expect(r.mediaAngulo, closeTo(47.675, 1e-9));
     expect(r.maxAngulo, 70.0);
@@ -172,7 +215,7 @@ void main() {
       valor('KO', '2');
       valor('Erros', '3');
       valor('Fracos', '3');
-      valor('Médios', '2');
+      valor('Médios', '3');
       expect(find.text('Salvo no celular, aguardando envio'), findsOneWidget);
       expect(find.text('2 sessões na fila'), findsOneWidget);
 

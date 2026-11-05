@@ -44,6 +44,9 @@ class _ResumoScreenState extends State<ResumoScreen> {
   /// avisos de pendência e de separadas se atualizam sozinhos.
   var _carregado = false;
   ResumoSessao? _resumo;
+
+  /// Diferença de pontuação para a sessão anterior; nula sem anterior.
+  int? _variacao;
   var _pendentes = 0;
   var _separadas = 0;
 
@@ -65,10 +68,14 @@ class _ResumoScreenState extends State<ResumoScreen> {
     final sessao = uuid == null ? null : await _fila.sessao(uuid);
     final pendentes = (await _fila.aguardandoEnvio()).length;
     final separadas = (await _fila.separadas()).length;
+    final variacao = sessao == null
+        ? null
+        : variacaoSobreAnterior(sessao, await _fila.historico());
     if (!mounted) return;
     setState(() {
       _carregado = true;
       _resumo = sessao == null ? null : ResumoSessao.de(sessao);
+      _variacao = variacao;
       _pendentes = pendentes;
       _separadas = separadas;
     });
@@ -169,6 +176,13 @@ class _ResumoScreenState extends State<ResumoScreen> {
                         'pontos',
                         style: AppText.bodyM.c(AppColors.textOnBrandMuted),
                       ),
+                      // RF12. Uma linha só, e nenhuma sem sessão anterior
+                      // (nada de "+0" nem "primeira sessão" ocupando lugar).
+                      if (_variacao case final v?)
+                        Text(
+                          textoVariacao(v),
+                          style: AppText.bodyS.c(AppColors.textOnBrandMuted),
+                        ),
                     ],
                   ),
                   Text(
@@ -223,24 +237,14 @@ class _ResumoScreenState extends State<ResumoScreen> {
                       label: 'Melhor sequência',
                     ),
                   ]),
-                  linha([
-                    // KO = derrubou o boneco (ângulo acima do limiar);
-                    // Erros = sem impacto válido na janela do lance.
-                    StatCard(
-                      icon: AppIcons.zap,
-                      value: '${r.kos}',
-                      label: 'KO',
-                    ),
-                    StatCard(
-                      icon: AppIcons.x,
-                      value: '${r.erros}',
-                      label: 'Erros',
-                    ),
-                  ]),
-                  // Sem "Fortes": o firmware decide forte e KO na mesma
-                  // condição, seria o KO contado duas vezes. Ângulos e
-                  // consistência seguem calculados em ResumoSessao, fora da
-                  // tela por decisão de produto (etapa 4b).
+                  // Três linhas de dois. As faixas de intensidade seguem
+                  // em ordem crescente na leitura (fracos, médios, KO): uma
+                  // distribuição dos acertos (fracos + médios + KO =
+                  // acertos), calculada pelo ângulo. Não há "Fortes": o KO é
+                  // a faixa forte. Erros não é faixa (é lance que não
+                  // aconteceu) e fecha a grade. Ângulos e consistência
+                  // seguem calculados em ResumoSessao, fora da tela por
+                  // decisão de produto (etapa 4b).
                   linha([
                     StatCard(
                       icon: AppIcons.tennisBall,
@@ -251,6 +255,18 @@ class _ResumoScreenState extends State<ResumoScreen> {
                       icon: AppIcons.tennisBall,
                       value: '${r.medios}',
                       label: 'Médios',
+                    ),
+                  ]),
+                  linha([
+                    StatCard(
+                      icon: AppIcons.zap,
+                      value: '${r.kos}',
+                      label: 'KO',
+                    ),
+                    StatCard(
+                      icon: AppIcons.x,
+                      value: '${r.erros}',
+                      label: 'Erros',
                     ),
                   ]),
                   const Spacer(),
@@ -273,3 +289,10 @@ class _ResumoScreenState extends State<ResumoScreen> {
     );
   }
 }
+
+/// "+23 em relação à sessão anterior", "−12 em relação…", ou "Mesma
+/// pontuação da sessão anterior" quando empatam.
+@visibleForTesting
+String textoVariacao(int v) => v == 0
+    ? 'Mesma pontuação da sessão anterior'
+    : '${v > 0 ? '+${fmtInt(v)}' : fmtInt(v)} em relação à sessão anterior';

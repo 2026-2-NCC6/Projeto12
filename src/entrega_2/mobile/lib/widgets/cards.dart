@@ -139,9 +139,12 @@ class SessionCard extends StatelessWidget {
                 fmtInt(session.pontos),
                 style: AppText.titleM.c(AppColors.textBrand),
               ),
-              session.sincronizada
-                  ? const AppBadge('Sincronizado', tone: BadgeTone.accent)
-                  : const AppBadge('Pendente', tone: BadgeTone.warning),
+              if (session.separada)
+                const AppBadge('Não enviada', tone: BadgeTone.error)
+              else if (session.sincronizada)
+                const AppBadge('Sincronizado', tone: BadgeTone.accent)
+              else
+                const AppBadge('Pendente', tone: BadgeTone.warning),
             ],
           ),
         ],

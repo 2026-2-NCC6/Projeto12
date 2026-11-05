@@ -74,6 +74,7 @@ class Session {
     required this.precisao,
     required this.pontos,
     required this.sincronizada,
+    this.separada = false,
   });
 
   final String id;
@@ -88,6 +89,9 @@ class Session {
   final int precisao;
   final int pontos;
   final bool sincronizada;
+
+  /// Recusada pela API por erro do app (422): guardada, mas não vai subir.
+  final bool separada;
 }
 
 enum ShotResult { acerto, erro, ko }

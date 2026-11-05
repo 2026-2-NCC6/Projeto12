@@ -36,8 +36,6 @@ abstract final class Routes {
   static const treinosCatalogo = '/treinos/catalogo';
   static const treinosMeus = '/treinos/meus';
   static const historico = '/historico';
-  static const historicoMes = '/historico/mes';
-  static const historicoPendentes = '/historico/pendentes';
   static const historicoDashboard = '/historico/dashboard';
   static const ranking = '/ranking';
   static const rankingEvolucao = '/ranking/evolucao';
@@ -146,18 +144,7 @@ GoRouter createRouter({String initialLocation = Routes.login}) {
             Routes.treinosMeus,
             const TreinosScreen(filtro: FiltroTreinos.meus),
           ),
-          tab(
-            Routes.historico,
-            const HistoricoScreen(filtro: FiltroHistorico.todas),
-          ),
-          tab(
-            Routes.historicoMes,
-            const HistoricoScreen(filtro: FiltroHistorico.mes),
-          ),
-          tab(
-            Routes.historicoPendentes,
-            const HistoricoScreen(filtro: FiltroHistorico.pendentes),
-          ),
+          tab(Routes.historico, const HistoricoScreen()),
           tab(Routes.historicoDashboard, const DashboardScreen()),
           tab(
             Routes.ranking,

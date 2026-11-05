@@ -75,6 +75,7 @@ class SessaoLocal {
     this.sincronizada = false,
     this.pontuacaoServidor,
     this.falha,
+    this.treinoTitulo,
     List<LanceLocal>? lances,
   }) : lances = lances ?? [];
 
@@ -88,6 +89,8 @@ class SessaoLocal {
     // Ausentes nas filas gravadas antes da etapa 5.
     pontuacaoServidor: j['pontuacao_servidor'] as int?,
     falha: j['falha'] as String?,
+    // Ausente nas filas gravadas antes da etapa 7.
+    treinoTitulo: j['treino_titulo'] as String?,
     lances: [
       for (final l in (j['lances'] as List).cast<Map<String, dynamic>>())
         LanceLocal.fromJson(l),
@@ -110,6 +113,10 @@ class SessaoLocal {
   /// as separadas da fila, guardada mas fora do envio, para não reenviar em
   /// laço.
   String? falha;
+
+  /// Nome do treino no início da sessão, para o histórico local. Só do
+  /// aparelho: não vai no envio (o servidor tem a versão do treino).
+  final String? treinoTitulo;
 
   final List<LanceLocal> lances;
 
@@ -165,6 +172,7 @@ class SessaoLocal {
     'sincronizada': sincronizada,
     'pontuacao_servidor': pontuacaoServidor,
     'falha': falha,
+    'treino_titulo': treinoTitulo,
     'lances': [for (final l in lances) l.toJson()],
   };
 }
@@ -319,6 +327,19 @@ class FilaSessoes {
   Future<List<SessaoLocal>> separadas() => _emSerie(() async {
     await _carregar();
     return List.of(_separadas);
+  });
+
+  /// O histórico local: todas as sessões guardadas que têm lances
+  /// (pendentes, sincronizadas e separadas), da mais recente para a mais
+  /// antiga por `iniciada_em`. Sessão sem lance não é treino.
+  Future<List<SessaoLocal>> historico() => _emSerie(() async {
+    final todas = [...await _carregar(), ..._separadas]
+      ..removeWhere((s) => s.lances.isEmpty)
+      ..sort(
+        (a, b) => DateTime.parse(b.iniciadaEm)
+            .compareTo(DateTime.parse(a.iniciadaEm)),
+      );
+    return todas;
   });
 
   /// Monta, num instante só, o corpo de cada sessão aguardando envio.
