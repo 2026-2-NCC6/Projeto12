@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'api_config.dart';
+import 'dashboard.dart';
 import 'models.dart';
 
 // Cliente HTTP dos endpoints da API (`/v1/auth/*` e `/v1/drills`).
@@ -301,6 +302,38 @@ class ApiClient {
       ),
     );
     return (json['sessoes'] as List? ?? const []).cast<Map<String, dynamic>>();
+  }
+
+  /// GET /v1/sessions → TODAS as sessões do dono do [token] na janela
+  /// [de]..[ate] (inclusivas; sem elas, todas), da mais recente para a mais
+  /// antiga. Pagina de 100 em 100 até o `total`: o Dashboard agrega o
+  /// período inteiro. As datas vão em UTC com `Z` (a API exige fuso).
+  Future<List<SessaoApi>> listarSessoes(
+    String token, {
+    DateTime? de,
+    DateTime? ate,
+  }) async {
+    const pagina = 100;
+    final sessoes = <SessaoApi>[];
+    while (true) {
+      final json = await _enviar(
+        () => _http.get(
+          _uri('/v1/sessions').replace(
+            queryParameters: {
+              if (de != null) 'de': de.toUtc().toIso8601String(),
+              if (ate != null) 'ate': ate.toUtc().toIso8601String(),
+              'limit': '$pagina',
+              'offset': '${sessoes.length}',
+            },
+          ),
+          headers: {'Authorization': 'Bearer $token'},
+        ),
+      );
+      final itens = (json['items'] as List).cast<Map<String, dynamic>>();
+      sessoes.addAll(itens.map(SessaoApi.fromJson));
+      final total = json['total'] as int;
+      if (itens.isEmpty || sessoes.length >= total) return sessoes;
+    }
   }
 
   Map<String, String> _jsonComToken(String token) => {

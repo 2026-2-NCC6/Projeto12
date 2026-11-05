@@ -117,36 +117,6 @@ abstract final class Mock {
   /// (mediana = 8,9 g).
   static const calibracaoBatidas = [8.4, 8.9, 9.2, 8.7, 9.0];
 
-  // --------------------------------------------------------------- Dashboard
-  static const dashSessoes = 24;
-  static const dashPontos = 24380;
-  static const dashVariacao = '▲ 18%';
-  static const dashMiniBarras = <double>[
-    11,
-    14,
-    13,
-    18,
-    16,
-    21,
-    19,
-    25,
-    22,
-    27,
-    24,
-    31,
-  ];
-  static const dashPrecisao = 84;
-  static const dashPrecisaoVariacao = '▲ 6 pts no mês';
-  static const dashMelhorSequencia = 9;
-  static const dashTotalLances = 480;
-  static const dashAcertos = 78;
-  static const dashKo = 6;
-  static const dashErros = 16;
-  static const dashDiasTreinados = 5;
-
-  /// Frequência semanal: D S T Q Q S S.
-  static const dashSemana = [false, true, true, false, true, true, true];
-
   // ------------------------------------------------------------------ Perfil
   static const perfilSessoes = 24;
   static const perfilRecorde = 2146;
