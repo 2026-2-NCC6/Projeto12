@@ -13,10 +13,14 @@ import 'models.dart';
 
 /// Erro devolvido pela API (ou falha de conexão, com [statusCode] nulo).
 class ApiException implements Exception {
-  const ApiException(this.mensagem, {this.statusCode});
+  const ApiException(this.mensagem, {this.statusCode, this.corpo});
 
   final String mensagem;
   final int? statusCode;
+
+  /// Corpo cru da resposta de erro, para log (ex.: o `detail` de um 422).
+  /// Nunca mostrado ao usuário.
+  final String? corpo;
 
   @override
   String toString() => 'ApiException($statusCode): $mensagem';
@@ -76,6 +80,7 @@ Drill _drillFromJson(Map<String, dynamic> json) {
     intervaloS: (intervaloMs / 1000).round(),
     intervaloMs: intervaloMs,
     falasTobias: versao['falas_tobias'] as bool?,
+    versaoId: versao['id'] as int?,
     nivel: Nivel.values.firstWhere(
       (n) => n.name == versao['nivel'],
       orElse: () => Nivel.personalizado,
@@ -281,6 +286,23 @@ class ApiClient {
     );
   }
 
+  /// POST /v1/sessions → resultado de cada sessão do lote (US-704). É
+  /// sempre 200 quando o lote é válido; o que deu certo ou não vem por
+  /// sessão em `situacao`. 422 = lote malformado; 401 = token expirado.
+  Future<List<Map<String, dynamic>>> enviarSessoes(
+    String token,
+    List<Map<String, dynamic>> sessoes,
+  ) async {
+    final json = await _enviar(
+      () => _http.post(
+        _uri('/v1/sessions'),
+        headers: _jsonComToken(token),
+        body: jsonEncode({'sessoes': sessoes}),
+      ),
+    );
+    return (json['sessoes'] as List? ?? const []).cast<Map<String, dynamic>>();
+  }
+
   Map<String, String> _jsonComToken(String token) => {
     'Authorization': 'Bearer $token',
     'Content-Type': 'application/json',
@@ -322,7 +344,7 @@ class ApiClient {
       return corpo is Map<String, dynamic> ? corpo : const {};
     }
     throw ApiException(_mensagemDeErro(corpo, resp.statusCode),
-        statusCode: resp.statusCode);
+        statusCode: resp.statusCode, corpo: resp.body);
   }
 
   dynamic _decodificar(http.Response resp) {

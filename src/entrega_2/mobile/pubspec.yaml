@@ -16,6 +16,7 @@ dependencies:
   image_picker: ^1.2.4
   shared_preferences: ^2.5.6
   flutter_blue_plus: ^1.35.0
+  uuid: ^4.6.0
 
 dev_dependencies:
   flutter_test:

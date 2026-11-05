@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'device_transport.dart';
@@ -309,34 +310,27 @@ class BleTransport implements DeviceTransport {
   Future<void> send(
     DeviceCommand cmd, {
     int lances = 15,
-    int intervaloSegundos = 3,
+    int intervaloMs = 3000,
     double calibracao = 0.0,
   }) async {
+    final payload = montarComando(
+      cmd,
+      lances: lances,
+      intervaloMs: intervaloMs,
+      calibracao: calibracao,
+    );
+
     if (!_isConnected || _rxChar == null) {
-      developer.log('Não é possível enviar comando: BLE não conectado', name: 'BleTransport');
+      debugPrint('[BLE] não conectado, comando NÃO enviado: ${payload.trim()}');
       return;
-    }
-
-    final calibStr = (calibracao > 0.0) ? calibracao.toStringAsFixed(1) : '0.0';
-
-    final String payload;
-    switch (cmd) {
-      case DeviceCommand.iniciarCalibracao:
-        payload = 'CALIBRAR:5\n';
-      case DeviceCommand.iniciarSessao:
-        payload = 'TREINO:$lances:$intervaloSegundos:$calibStr\n';
-      case DeviceCommand.pausar:
-        payload = 'STOP\n';
-      case DeviceCommand.retomar:
-        payload = 'TREINO:$lances:$intervaloSegundos:$calibStr\n';
-      case DeviceCommand.finalizar:
-        payload = 'STOP\n';
     }
 
     try {
       final bytes = utf8.encode(payload);
       await _rxChar!.write(bytes, withoutResponse: false);
-      developer.log('Comando enviado para o Tobias: $payload', name: 'BleTransport');
+      // debugPrint (e não só developer.log) para aparecer no console do
+      // `flutter run`: é como se confere o comando que foi ao Tobias.
+      debugPrint('[BLE] comando enviado ao Tobias: ${payload.trim()}');
     } catch (e) {
       developer.log('Erro ao escrever no canal RX BLE: $e', name: 'BleTransport', error: e);
     }

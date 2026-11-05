@@ -5,6 +5,7 @@ import '../../data/api_client.dart';
 import '../../data/api_config.dart';
 import '../../data/auth_store.dart';
 import '../../data/auth_validacao.dart';
+import '../../data/sincronizador.dart';
 import '../../router.dart';
 import '../../state/device_state.dart';
 import '../../theme/app_colors.dart';
@@ -70,6 +71,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await AuthStore.salvarPapel(usuario.papel);
       await AuthStore.salvarCalibracao(usuario.calibracao);
       DeviceState.calibracao.value = usuario.calibracao;
+      // Gatilho de envio: com o token novo, sobe o que ficou na fila
+      // (inclusive o que parou num 401 de token expirado).
+      Sincronizador.doApp.disparar();
 
       if (!mounted) return;
       context.push(Routes.pareamento);

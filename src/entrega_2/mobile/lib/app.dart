@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:go_router/go_router.dart';
 
+import 'data/sincronizador.dart';
 import 'router.dart';
 import 'state/app_settings.dart';
 import 'theme/app_theme.dart';
@@ -21,8 +24,23 @@ class _SmartTennisArenaAppState extends State<SmartTennisArenaApp> {
     initialLocation: widget.initialLocation,
   );
 
+  /// Mostra os avisos do envio (ex.: sessão rejeitada) em qualquer tela.
+  final _mensageiro = GlobalKey<ScaffoldMessengerState>();
+  late final StreamSubscription<String> _avisos;
+
+  @override
+  void initState() {
+    super.initState();
+    _avisos = Sincronizador.doApp.avisos.listen(
+      (texto) => _mensageiro.currentState?.showSnackBar(
+        SnackBar(content: Text(texto)),
+      ),
+    );
+  }
+
   @override
   void dispose() {
+    _avisos.cancel();
     _router.dispose();
     super.dispose();
   }
@@ -38,6 +56,7 @@ class _SmartTennisArenaAppState extends State<SmartTennisArenaApp> {
       supportedLocales: const [Locale('pt', 'BR')],
       localizationsDelegates: GlobalMaterialLocalizations.delegates,
       routerConfig: _router,
+      scaffoldMessengerKey: _mensageiro,
       builder: (context, child) => ValueListenableBuilder(
         valueListenable: AppSettings.textoGrande,
         builder: (context, grande, _) {

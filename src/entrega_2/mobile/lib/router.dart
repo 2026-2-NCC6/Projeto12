@@ -20,6 +20,7 @@ import 'screens/sessao/sessao_selecao_screen.dart';
 import 'screens/treinos/editar_treino_screen.dart';
 import 'screens/treinos/novo_treino_screen.dart';
 import 'screens/treinos/treinos_screen.dart';
+import 'state/sessao_ativa.dart';
 import 'theme/app_colors.dart';
 import 'widgets/bottom_nav.dart';
 import 'widgets/layout.dart';
@@ -103,13 +104,23 @@ GoRouter createRouter({String initialLocation = Routes.login}) {
         (s) => EditarTreinoScreen(drillId: q(s, 'id')),
       ),
       stacked(Routes.sessao, (_) => const SessaoSelecaoScreen()),
-      stacked(
-        Routes.sessaoAndamento,
-        (s) => EmAndamentoScreen(treino: q(s, 'treino') ?? 'Reação rápida'),
+      GoRoute(
+        path: Routes.sessaoAndamento,
+        parentNavigatorKey: rootKey,
+        // A sessão congelada chega em `extra`, vinda da Seleção. Sem ela
+        // (link direto, app restaurado) não há o que treinar: volta para
+        // a escolha do treino em vez de inventar um.
+        redirect: (context, state) =>
+            state.extra is SessaoAtiva ? null : Routes.sessao,
+        builder: (context, state) =>
+            EmAndamentoScreen(sessao: state.extra! as SessaoAtiva),
       ),
       stacked(
         Routes.sessaoResumo,
-        (s) => ResumoScreen(treino: q(s, 'treino') ?? 'Reação rápida'),
+        (s) => ResumoScreen(
+          uuidSessao: q(s, 'sessao'),
+          treino: q(s, 'treino') ?? '',
+        ),
       ),
       stacked(Routes.historicoDetalhe, (_) => const DetalheScreen()),
       stacked(

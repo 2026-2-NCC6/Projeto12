@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'app.dart';
 import 'data/api_client.dart';
 import 'data/api_config.dart';
+import 'data/sincronizador.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,4 +17,7 @@ Future<void> main() async {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const SmartTennisArenaApp());
+  // Gatilho de envio: abertura do app (com o token da última sessão, se
+  // ainda valer; senão, o envio volta no login).
+  Sincronizador.doApp.disparar();
 }

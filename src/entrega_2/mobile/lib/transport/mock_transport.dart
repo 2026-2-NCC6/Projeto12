@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
+
 import '../data/mock_data.dart';
 import 'device_transport.dart';
 
@@ -48,13 +50,23 @@ class MockTransport implements DeviceTransport {
     return controller.stream;
   }
 
+  /// Não fala com hardware, mas registra o comando que o BLE mandaria:
+  /// dá para conferir os parâmetros da sessão também no simulador.
   @override
   Future<void> send(
     DeviceCommand cmd, {
     int lances = 15,
-    int intervaloSegundos = 3,
+    int intervaloMs = 3000,
     double calibracao = 0.0,
-  }) async {}
+  }) async {
+    final payload = montarComando(
+      cmd,
+      lances: lances,
+      intervaloMs: intervaloMs,
+      calibracao: calibracao,
+    );
+    debugPrint('[Simulador] comando (não enviado): ${payload.trim()}');
+  }
 
   @override
   Future<DeviceStatus> status() async => const DeviceStatus(

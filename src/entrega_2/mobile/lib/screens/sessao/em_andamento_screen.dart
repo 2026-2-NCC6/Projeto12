@@ -4,16 +4,17 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/fila_sessoes.dart';
 import '../../data/format.dart';
-import '../../data/mock_data.dart';
-import '../../data/models.dart';
+import '../../data/sincronizador.dart';
 import '../../router.dart';
 import '../../state/device_state.dart';
+import '../../state/gravador_sessao.dart';
+import '../../state/sessao_ativa.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_text.dart';
 import '../../theme/app_tokens.dart';
-import '../../transport/device_transport.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/charts.dart';
 import '../../widgets/layout.dart';
@@ -21,9 +22,13 @@ import '../../widgets/layout.dart';
 /// 4.2 Sessão · Em andamento (21:741). Não mostra pontuação — só tempo e
 /// animação. Sem botão voltar: sai-se por "Finalizar sessão".
 class EmAndamentoScreen extends StatefulWidget {
-  const EmAndamentoScreen({super.key, required this.treino});
+  const EmAndamentoScreen({super.key, required this.sessao, this.fila});
 
-  final String treino;
+  /// Congelada na seleção: os parâmetros não são relidos do treino.
+  final SessaoAtiva sessao;
+
+  /// Fila onde a sessão é gravada; nos testes, uma isolada.
+  final FilaSessoes? fila;
 
   @override
   State<EmAndamentoScreen> createState() => _EmAndamentoScreenState();
@@ -41,42 +46,24 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
   )..repeat();
 
   Timer? _timer;
-  StreamSubscription<ImpactEvent>? _sub;
   var _segundos = 0;
   var _pausado = false;
-  var _acertos = 0;
-  var _erros = 0;
 
-  Drill get _drill => Mock.treinosTodos.firstWhere(
-        (d) => d.titulo == widget.treino,
-        orElse: () => Mock.reacaoRapida,
-      );
+  /// Grava a sessão na fila local e fala com o Tobias (etapa 3).
+  late final _gravador = GravadorSessao(
+    sessao: widget.sessao,
+    fila: widget.fila ?? FilaSessoes.doApp,
+    transport: DeviceState.transport,
+  );
+  late final Future<void> _iniciada = _gravador.iniciar();
 
   @override
   void initState() {
     super.initState();
     _iniciarTimer();
-    _iniciarTreinoTobias();
-  }
-
-  void _iniciarTreinoTobias() {
-    final d = _drill;
-    DeviceState.transport.send(
-      DeviceCommand.iniciarSessao,
-      lances: d.lances,
-      intervaloSegundos: d.intervaloS,
-      calibracao: DeviceState.calibracao.value,
-    );
-    _sub = DeviceState.transport.events.listen((e) {
-      if (mounted) {
-        setState(() {
-          if (e.resultado == 'erro') {
-            _erros++;
-          } else {
-            _acertos++;
-          }
-        });
-      }
+    // A sessão é gravada na fila antes de o TREINO: sair (ver GravadorSessao).
+    _iniciada.catchError((Object e) {
+      debugPrint('[Sessão] falha ao iniciar: $e');
     });
   }
 
@@ -92,28 +79,40 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
       _timer?.cancel();
       _pulse.stop();
       _spin.stop();
-      DeviceState.transport.send(DeviceCommand.pausar);
+      _gravador.pausar();
     } else {
       _iniciarTimer();
       _pulse.repeat(reverse: true);
       _spin.repeat();
-      final d = _drill;
-      DeviceState.transport.send(
-        DeviceCommand.retomar,
-        lances: d.lances,
-        intervaloSegundos: d.intervaloS,
-      calibracao: DeviceState.calibracao.value,
-      );
+      // Pede só os lances que faltam: o firmware recomeça do zero.
+      _gravador.retomar();
     }
+  }
+
+  Future<void> _finalizar() async {
+    await _gravador.encerrar();
+    // Gatilho de envio: fim da sessão. Não bloqueia a tela.
+    Sincronizador.doApp.disparar();
+    if (!mounted) return;
+    context.pushReplacement(
+      Uri(
+        path: Routes.sessaoResumo,
+        queryParameters: {
+          'treino': widget.sessao.titulo,
+          'sessao': _gravador.uuidSessao,
+        },
+      ).toString(),
+    );
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _sub?.cancel();
     _pulse.dispose();
     _spin.dispose();
-    DeviceState.transport.send(DeviceCommand.finalizar);
+    // Saída sem "Finalizar" (ex.: o sistema fechou a tela): para o Tobias e
+    // fecha a sessão. Idempotente depois de _finalizar.
+    unawaited(_gravador.encerrar());
     super.dispose();
   }
 
@@ -143,8 +142,15 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.treino,
+                              widget.sessao.titulo,
                               style: AppText.titleL.c(AppColors.textOnBrand),
+                            ),
+                            Text(
+                              '${widget.sessao.lances} lances · '
+                              '${fmtSegundos(widget.sessao.intervaloMs)} entre eles',
+                              style: AppText.bodyS.c(
+                                AppColors.textOnBrandMuted,
+                              ),
                             ),
                             Text(
                               'Sessão em andamento',
@@ -237,12 +243,7 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
                   AppButton.danger(
                     'Finalizar sessão',
                     icon: AppIcons.stop,
-                    onPressed: () => context.pushReplacement(
-                      Uri(
-                        path: Routes.sessaoResumo,
-                        queryParameters: {'treino': widget.treino},
-                      ).toString(),
-                    ),
+                    onPressed: _finalizar,
                   ),
                 ],
               ),

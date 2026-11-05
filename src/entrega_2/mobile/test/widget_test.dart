@@ -4,8 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smart_tennis_arena_mobile/app.dart';
+import 'package:smart_tennis_arena_mobile/data/fila_sessoes.dart';
 import 'package:smart_tennis_arena_mobile/router.dart';
 import 'package:smart_tennis_arena_mobile/state/app_settings.dart';
 import 'package:smart_tennis_arena_mobile/state/profile_state.dart';
@@ -363,6 +365,11 @@ void main() {
   testWidgets('nenhuma tela mostra reação nem consistência no resumo', (
     tester,
   ) async {
+    // Desde a etapa 4 o resumo lê a fila local (shared_preferences). Fila
+    // nova e preferências simuladas ANTES de abrir qualquer tela: sem isso a
+    // fila serial fica presa e o teste trava.
+    SharedPreferences.setMockInitialValues({});
+    FilaSessoes.reiniciarParaTestes();
     _tamanhoTela(tester, const Size(390, 844));
     for (final rota in [
       Routes.treinos,
@@ -381,7 +388,29 @@ void main() {
         reason: rota,
       );
     }
-    await _abrir(tester, Routes.sessaoResumo);
+    // O resumo mostra uma sessão real da fila, e não mais o mock: grava uma
+    // antes de abrir. As verificações não mudam.
+    await FilaSessoes.doApp.abrir(
+      SessaoLocal(
+        uuidSessao: 'widget-test-resumo',
+        treinoVersaoId: 1,
+        dificuldade: 0,
+        iniciadaEm: '2026-11-04T22:30:00.000Z',
+        lances: const [
+          LanceLocal(
+            uuidLance: 'widget-test-lance-1',
+            idLanceFirmware: null,
+            bola: 1,
+            resultado: 'acerto',
+            classe: 'medio',
+            knockout: false,
+            angulo: 45.0,
+            tsMs: 3000,
+          ),
+        ],
+      ),
+    );
+    await _abrir(tester, '${Routes.sessaoResumo}?sessao=widget-test-resumo');
     expect(find.text('Consistência'), findsNothing);
     expect(find.text('KO'), findsOneWidget);
     expect(find.text('Erros'), findsOneWidget);

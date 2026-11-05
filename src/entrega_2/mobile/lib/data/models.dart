@@ -28,7 +28,14 @@ class Drill {
     this.origem,
     this.intervaloMs,
     this.falasTobias,
+    this.versaoId,
   });
+
+  /// `versao_atual.id` da API: a versão exata dos parâmetros acima. É ela
+  /// que a sessão guarda (e envia em `treino_versao_id`), para continuar
+  /// presa à versão treinada mesmo que o treino seja editado depois.
+  /// Nulo nos dados de exemplo, que não vêm da API.
+  final int? versaoId;
 
   final String id;
   final String titulo;
