@@ -134,9 +134,11 @@ class Sincronizador {
       final respostas = await _api.enviarSessoes(token, [
         for (final e in lote) e.corpo,
       ]);
-      final rejeitadas = await fila.aplicarRespostas(lote, [
+      final resultados = [
         for (final r in respostas) RespostaSessao.fromJson(r),
-      ]);
+      ];
+      _registrarDivergencias(lote, resultados);
+      final rejeitadas = await fila.aplicarRespostas(lote, resultados);
       for (final r in rejeitadas) {
         debugPrint(
           '[Envio] sessão ${r.uuidSessao} rejeitada pela API '
@@ -179,6 +181,29 @@ class Sincronizador {
 
       debugPrint('[Envio] erro inesperado da API ($status): ${e.mensagem}');
       return ResultadoSincronizacao.interrompida;
+    }
+  }
+
+  /// Compara o `pontuacao_cliente` enviado com o `pontuacao_total` oficial.
+  ///
+  /// Divergência é problema de desenvolvimento (as regras do app e do
+  /// servidor saíram de sincronia), não recado para o jogador: só log, sem
+  /// aviso. A tela usa o número do servidor de qualquer jeito.
+  void _registrarDivergencias(
+    List<EnvioPreparado> lote,
+    List<RespostaSessao> respostas,
+  ) {
+    final enviados = {
+      for (final e in lote) e.uuidSessao: e.corpo['pontuacao_cliente'],
+    };
+    for (final r in respostas) {
+      final cliente = enviados[r.uuidSessao];
+      final servidor = r.pontuacaoTotal;
+      if (servidor == null || cliente == null || cliente == servidor) continue;
+      debugPrint(
+        '[Envio] PONTUAÇÃO DIVERGENTE na sessão ${r.uuidSessao}: '
+        'app=$cliente servidor=$servidor (vale a do servidor)',
+      );
     }
   }
 

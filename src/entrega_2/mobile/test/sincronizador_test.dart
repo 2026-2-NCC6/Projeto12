@@ -123,7 +123,7 @@ void main() {
     expect(await fila.aguardandoEnvio(), isEmpty);
   });
 
-  test('corpo do envio: contrato da API, sem pontuacao_cliente, ângulo intacto', () async {
+  test('corpo do envio: contrato da API, com pontuacao_cliente, ângulo intacto', () async {
     await fila.abrir(_sessao('a'));
     final servidor = _Servidor((s) => _todas(s, 'inserida'));
 
@@ -141,13 +141,70 @@ void main() {
       'dificuldade',
       'iniciada_em',
       'encerrada_em',
+      'pontuacao_cliente',
       'lances',
     });
     expect(sessao['dificuldade'], 2.5);
     expect(sessao['iniciada_em'], endsWith('Z'));
     expect(post.body, contains('"angulo":61.4'));
-    expect(post.body, isNot(contains('pontuacao')));
+    // O total da regra local, inteiro. Nada dos campos só do aparelho.
+    expect(sessao['pontuacao_cliente'], isA<int>());
+    expect(sessao['pontuacao_cliente'], _sessao('a').pontuar().pontuacaoTotal);
+    expect(post.body, isNot(contains('pontuacao_servidor')));
     expect(post.body, isNot(contains('sincronizada')));
+  });
+
+  group('divergência de pontuação', () {
+    Future<(List<String>, List<String>)> enviar(int Function(int) servidor) async {
+      await fila.abrir(_sessao('a'));
+      final logs = <String>[];
+      final printOriginal = debugPrint;
+      debugPrint = (String? m, {int? wrapWidth}) {
+        if (m != null) logs.add(m);
+      };
+      final sinc = _sinc(
+        _Servidor(
+          (s) => _todas(
+            s,
+            'inserida',
+            pontos: servidor(s.single['pontuacao_cliente'] as int),
+          ),
+        ),
+        fila,
+      );
+      final avisos = <String>[];
+      final sub = sinc.avisos.listen(avisos.add);
+      try {
+        await sinc.sincronizar();
+        await Future<void>.delayed(Duration.zero);
+      } finally {
+        debugPrint = printOriginal;
+        await sub.cancel();
+      }
+      return (logs, avisos);
+    }
+
+    test('diferente: vale a do servidor, registra em log, sem aviso', () async {
+      final local = _sessao('a').pontuar().pontuacaoTotal;
+      final (logs, avisos) = await enviar((cliente) => cliente + 1);
+
+      final s = (await fila.todas()).single;
+      expect(s.pontuacaoServidor, local + 1);
+      expect(s.pontuacaoExibida, local + 1);
+      expect(
+        logs.where((l) => l.contains('PONTUAÇÃO DIVERGENTE')).single,
+        allOf(contains('app=$local'), contains('servidor=${local + 1}')),
+      );
+      expect(avisos, isEmpty);
+    });
+
+    test('igual (o caso normal): nenhum log de divergência', () async {
+      final (logs, avisos) = await enviar((cliente) => cliente);
+
+      expect(logs.where((l) => l.contains('DIVERGENTE')), isEmpty);
+      expect(avisos, isEmpty);
+      expect((await fila.todas()).single.sincronizada, isTrue);
+    });
   });
 
   test('até 50 sessões por lote', () async {

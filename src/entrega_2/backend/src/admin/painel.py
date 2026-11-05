@@ -1,9 +1,12 @@
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
+from sqlalchemy import delete
+from sqlalchemy.orm import object_session
 from starlette.requests import Request
 
 from src.core.security import conferir_senha
 from src.db.session import SessionLocal, engine
+from src.models.sessao import Lance, Sessao
 from src.models.treino import Treino, TreinoVersao
 from src.models.usuario import Papel, Usuario
 
@@ -106,6 +109,89 @@ class TreinoVersaoView(ModelView, model=TreinoVersao):
     column_sortable_list = [TreinoVersao.treino_id, TreinoVersao.numero]
 
 
+class SessaoView(ModelView, model=Sessao):
+    name = "Sessão"
+    name_plural = "Sessões"
+    icon = "fa-solid fa-table-tennis-paddle-ball"
+
+    column_list = [
+        Sessao.uuid_sessao,
+        Sessao.usuario_id,
+        Sessao.treino_versao_id,
+        Sessao.iniciada_em,
+        Sessao.encerrada_em,
+        Sessao.recebida_em,
+        Sessao.pontuacao_total,
+        Sessao.versao_pontuacao,
+        Sessao.acertos,
+        Sessao.erros,
+        Sessao.kos,
+        Sessao.melhor_sequencia,
+        Sessao.precisao,
+    ]
+    # `id` e o que aparece nos logs (ex.: pontuacao_divergente sessao_id=...)
+    # e `uuid_sessao` e o que o app conhece: os dois pesquisaveis, para
+    # correlacionar um alerta com a sessao. A busca aceita trecho do UUID.
+    column_searchable_list = [Sessao.uuid_sessao, Sessao.id]
+    column_sortable_list = [
+        Sessao.usuario_id,
+        Sessao.iniciada_em,
+        Sessao.recebida_em,
+        Sessao.pontuacao_total,
+    ]
+    column_default_sort = [(Sessao.recebida_em, True)]
+
+    # Sessao e lance sao registro de evento, nao cadastro: entram pela API
+    # (POST /v1/sessions), nunca a mao, e nao se editam. Editar a
+    # pontuacao_total faria o painel exibir um placar "oficial" que o
+    # servidor nunca calculou, contradizendo a US-705: o numero voltaria a
+    # depender de confianca em quem tem acesso ao painel. E os totais sao
+    # derivados dos lances; edita-los e editar um cache.
+    #
+    # Excluir fica ligado, e a unidade e a sessao inteira (com os lances,
+    # ver on_model_delete): e como o admin limpa dados de teste.
+    can_create = False
+    can_edit = False
+    can_delete = True
+
+    async def on_model_delete(self, model, request: Request) -> None:
+        # lance.sessao_id nao tem ON DELETE CASCADE: sem isto, excluir uma
+        # sessao com lances falharia por integridade. Mesma transacao da
+        # exclusao da sessao: ou sai tudo, ou nada.
+        object_session(model).execute(
+            delete(Lance).where(Lance.sessao_id == model.id)
+        )
+
+
+class LanceView(ModelView, model=Lance):
+    name = "Lance"
+    name_plural = "Lances"
+    icon = "fa-solid fa-baseball"
+
+    column_list = [
+        Lance.sessao_id,
+        Lance.bola,
+        Lance.uuid_lance,
+        Lance.id_lance_firmware,
+        Lance.resultado,
+        Lance.classe,
+        Lance.angulo,
+        Lance.ts_ms,
+        Lance.pontos,
+    ]
+    # Pelo sessao_id (o `id` da sessao) se acham os lances de uma sessao.
+    column_searchable_list = [Lance.sessao_id, Lance.uuid_lance]
+    column_sortable_list = [Lance.sessao_id, Lance.bola]
+    column_default_sort = [(Lance.sessao_id, False), (Lance.bola, False)]
+
+    # Mesmo motivo da SessaoView: registro de evento, entra pela API e nao
+    # se edita. Nem se exclui avulso: sem o lance, os totais e a pontuacao
+    # da sessao mentiriam. Para limpar, exclui-se a sessao inteira.
+    can_create = False
+    can_edit = False
+    can_delete = False
+
+
 def montar_painel(app, secret_key: str) -> Admin:
     """Registra o painel administrativo em /admin."""
     painel = Admin(
@@ -117,4 +203,6 @@ def montar_painel(app, secret_key: str) -> Admin:
     painel.add_view(UsuarioView)
     painel.add_view(TreinoView)
     painel.add_view(TreinoVersaoView)
+    painel.add_view(SessaoView)
+    painel.add_view(LanceView)
     return painel

@@ -58,6 +58,30 @@ SessaoLocal _sessao(List<LanceLocal> lances) => SessaoLocal(
 );
 
 void main() {
+  group('placar exibido', () {
+    test('pendente: o local, mesmo que já haja número do servidor', () {
+      // Ex.: chegou lance depois do envio; o servidor pontuou outra versão.
+      final s = _sessaoLonga()..pontuacaoServidor = 700;
+      expect(ResumoSessao.de(s).pontuacaoTotal, 712);
+    });
+
+    test('sincronizada: o do servidor, que é o oficial', () {
+      final s = _sessaoLonga()
+        ..sincronizada = true
+        ..pontuacaoServidor = 713;
+      final r = ResumoSessao.de(s);
+      expect(r.pontuacaoTotal, 713);
+      // O que o servidor não devolve continua da regra local.
+      expect(r.melhorSequencia, 4);
+      expect(r.kos, 2);
+    });
+
+    test('sincronizada numa fila antiga, sem número do servidor: o local', () {
+      final s = _sessaoLonga()..sincronizada = true;
+      expect(ResumoSessao.de(s).pontuacaoTotal, 712);
+    });
+  });
+
   test('sessão mista: números conferidos à mão', () {
     final r = ResumoSessao.de(_sessaoLonga());
 
@@ -207,6 +231,33 @@ void main() {
       await abrir(tester, fila, 's');
 
       expect(find.text('Não foi possível enviar'), findsNothing);
+    });
+
+    testWidgets('pendente mostra o placar local; sincronizada, o do servidor', (
+      tester,
+    ) async {
+      final fila = FilaSessoes();
+      await fila.abrir(_sessaoLonga());
+      await abrir(tester, fila, 'longa');
+      expect(find.text('712'), findsOneWidget);
+
+      // O envio termina com a tela aberta. Número do servidor diferente de
+      // propósito, para ver que é ele que aparece (sem alerta nenhum).
+      final enviados = await fila.prepararEnvio();
+      await fila.aplicarRespostas(enviados, const [
+        RespostaSessao(
+          uuidSessao: 'longa',
+          situacao: 'inserida',
+          pontuacaoTotal: 713,
+        ),
+      ]);
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('713'), findsOneWidget);
+      expect(find.text('712'), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.textContaining('diverg'), findsNothing);
     });
 
     testWidgets('sessão que não está na fila', (tester) async {

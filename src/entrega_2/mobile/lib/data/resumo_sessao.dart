@@ -6,7 +6,10 @@ import 'pontuacao.dart';
 /// Números da tela de resumo, calculados a partir dos lances gravados.
 ///
 /// Pontuação, melhor sequência e KOs vêm da regra oficial
-/// ([calcularPontuacao], a mesma do servidor). O resto é só exibição, em
+/// ([calcularPontuacao], a mesma do servidor). O placar exibido é o do
+/// servidor depois de sincronizada (ver [SessaoLocal.pontuacaoExibida]); a
+/// sequência e os KOs, que o servidor não devolve, são sempre os locais
+/// (iguais aos dele pela mesma regra). O resto é só exibição, em
 /// ponto flutuante: não entra na pontuação nem precisa bater com o Python.
 ///
 /// Campos nulos são métricas INDEFINIDAS (ex.: média sem nenhum acerto), e
@@ -29,17 +32,7 @@ class ResumoSessao {
   });
 
   factory ResumoSessao.de(SessaoLocal sessao) {
-    final pontuacao = calcularPontuacao(
-      [
-        for (final l in sessao.lances)
-          LanceBruto(
-            bola: l.bola,
-            resultado: ResultadoLance.values.byName(l.resultado),
-            anguloDecimos: decimos(l.angulo),
-          ),
-      ],
-      dificuldadeDecimos: decimos(sessao.dificuldade),
-    );
+    final pontuacao = sessao.pontuar();
 
     final acertos = [
       for (final l in sessao.lances)
@@ -50,7 +43,7 @@ class ResumoSessao {
 
     final total = sessao.lances.length;
     return ResumoSessao(
-      pontuacaoTotal: pontuacao.pontuacaoTotal,
+      pontuacaoTotal: sessao.pontuacaoExibida,
       melhorSequencia: pontuacao.melhorSequencia,
       kos: pontuacao.kos,
       lances: total,
@@ -66,7 +59,7 @@ class ResumoSessao {
     );
   }
 
-  /// Da regra oficial (iguais ao que o servidor vai calcular).
+  /// O placar exibido: o oficial do servidor se sincronizada, senão o local.
   final int pontuacaoTotal;
   final int melhorSequencia;
 

@@ -39,48 +39,39 @@ class ResumoScreen extends StatefulWidget {
 class _ResumoScreenState extends State<ResumoScreen> {
   FilaSessoes get _fila => widget.fila ?? FilaSessoes.doApp;
 
-  late final Future<ResumoSessao?> _dados = _carregar();
-
-  /// Aguardando envio e separadas por erro; recontadas sempre que a fila
-  /// muda (ex.: o envio que o fim da sessão disparou terminou), para os
-  /// avisos se atualizarem sozinhos.
+  /// Relido sempre que a fila muda (ex.: o envio que o fim da sessão
+  /// disparou terminou): o placar troca para o oficial do servidor e os
+  /// avisos de pendência e de separadas se atualizam sozinhos.
+  var _carregado = false;
+  ResumoSessao? _resumo;
   var _pendentes = 0;
   var _separadas = 0;
 
   @override
   void initState() {
     super.initState();
-    _fila.alteracoes.addListener(_recontar);
+    _fila.alteracoes.addListener(_carregar);
+    _carregar();
   }
 
   @override
   void dispose() {
-    _fila.alteracoes.removeListener(_recontar);
+    _fila.alteracoes.removeListener(_carregar);
     super.dispose();
   }
 
-  Future<(int, int)> _contar() async => (
-    (await _fila.aguardandoEnvio()).length,
-    (await _fila.separadas()).length,
-  );
-
-  Future<void> _recontar() async {
-    final (p, s) = await _contar();
-    if (mounted) {
-      setState(() {
-        _pendentes = p;
-        _separadas = s;
-      });
-    }
-  }
-
-  Future<ResumoSessao?> _carregar() async {
+  Future<void> _carregar() async {
     final uuid = widget.uuidSessao;
     final sessao = uuid == null ? null : await _fila.sessao(uuid);
-    final (p, s) = await _contar();
-    _pendentes = p;
-    _separadas = s;
-    return sessao == null ? null : ResumoSessao.de(sessao);
+    final pendentes = (await _fila.aguardandoEnvio()).length;
+    final separadas = (await _fila.separadas()).length;
+    if (!mounted) return;
+    setState(() {
+      _carregado = true;
+      _resumo = sessao == null ? null : ResumoSessao.de(sessao);
+      _pendentes = pendentes;
+      _separadas = separadas;
+    });
   }
 
   @override
@@ -89,20 +80,13 @@ class _ResumoScreenState extends State<ResumoScreen> {
       light: true,
       child: Scaffold(
         backgroundColor: AppColors.bgApp,
-        body: FutureBuilder(
-          future: _dados,
-          builder: (context, snap) {
-            if (snap.connectionState != ConnectionState.done) {
-              return const Center(
+        body: !_carregado
+            ? const Center(
                 child: CircularProgressIndicator(color: AppColors.bgBrand),
-              );
-            }
-            final resumo = snap.data;
-            return resumo == null
-                ? _naoEncontrada(context)
-                : _conteudo(context, resumo);
-          },
-        ),
+              )
+            : _resumo == null
+            ? _naoEncontrada(context)
+            : _conteudo(context, _resumo!),
       ),
     );
   }

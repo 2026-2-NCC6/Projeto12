@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'pontuacao.dart';
+
 /// Um lance como foi recebido, com o UUID gerado NA CHEGADA.
 ///
 /// As chaves do JSON são as do contrato `POST /v1/sessions` (US-704), para
@@ -116,15 +118,41 @@ class SessaoLocal {
   /// montado (ex.: chegou um lance durante a requisição).
   int _versao = 0;
 
+  /// A pontuação pela regra oficial ([calcularPontuacao], a mesma do
+  /// servidor), sobre os lances gravados até agora.
+  ResultadoPontuacao pontuar() => calcularPontuacao(
+    [
+      for (final l in lances)
+        LanceBruto(
+          bola: l.bola,
+          resultado: ResultadoLance.values.byName(l.resultado),
+          anguloDecimos: decimos(l.angulo),
+        ),
+    ],
+    dificuldadeDecimos: decimos(dificuldade),
+  );
+
+  /// O placar que vale: o oficial do servidor depois de sincronizada; o
+  /// local enquanto pendente. Recálculo autoritativo: quem tem a palavra
+  /// final é o servidor.
+  int get pontuacaoExibida =>
+      sincronizada && pontuacaoServidor != null
+      ? pontuacaoServidor!
+      : pontuar().pontuacaoTotal;
+
   /// O corpo de `POST /v1/sessions` para esta sessão: só o contrato, sem os
-  /// campos locais (sincronizada, pontuação, falha). Sem `pontuacao_cliente`
-  /// por enquanto (etapa 6).
+  /// campos locais (sincronizada, pontuação do servidor, falha).
+  ///
+  /// `pontuacao_cliente` é o total local, para o servidor detectar
+  /// divergência entre a regra do app e a dele. Ele nunca o grava como
+  /// oficial.
   Map<String, dynamic> paraEnvio() => {
     'uuid_sessao': uuidSessao,
     'treino_versao_id': treinoVersaoId,
     'dificuldade': dificuldade,
     'iniciada_em': iniciadaEm,
     'encerrada_em': encerradaEm,
+    'pontuacao_cliente': pontuar().pontuacaoTotal,
     'lances': [for (final l in lances) l.toJson()],
   };
 
