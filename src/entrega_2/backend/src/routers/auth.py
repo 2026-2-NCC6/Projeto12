@@ -72,7 +72,7 @@ def atualizar_calibracao(
     db: Session = Depends(get_db),
 ):
     """Atualiza o nivel de calibracao / dificuldade fisica do jogador."""
-    usuario.calibracao = dados.calibracao
+    usuario.calibracao = float(dados.calibracao)
     db.commit()
     db.refresh(usuario)
     return usuario

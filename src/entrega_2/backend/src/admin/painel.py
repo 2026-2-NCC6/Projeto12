@@ -155,9 +155,10 @@ class SessaoView(ModelView, model=Sessao):
     can_delete = True
 
     async def on_model_delete(self, model, request: Request) -> None:
-        # lance.sessao_id nao tem ON DELETE CASCADE: sem isto, excluir uma
-        # sessao com lances falharia por integridade. Mesma transacao da
-        # exclusao da sessao: ou sai tudo, ou nada.
+        # Redundante desde que lance.sessao_id tem ON DELETE CASCADE (migration
+        # d4f8b2c6e1a7): o banco ja apaga os lances. Mantido de proposito, como
+        # segunda garantia. Mesma transacao da exclusao da sessao: ou sai
+        # tudo, ou nada.
         object_session(model).execute(
             delete(Lance).where(Lance.sessao_id == model.id)
         )
