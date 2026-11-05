@@ -113,7 +113,13 @@ class _HistoricoScreenState extends State<HistoricoScreen> {
                       onPressed: () => context.push(Routes.sessao),
                     ),
                   ] else
-                    for (final s in sessoes) SessionCard(session: s),
+                    for (final s in sessoes)
+                      SessionCard(
+                        session: s,
+                        onTap: () => context.push(
+                          '${Routes.historicoDetalhe}?sessao=${s.id}',
+                        ),
+                      ),
                 ],
               ),
             ),

@@ -140,7 +140,22 @@ Future<void> _capturar(WidgetTester tester, String nome) async {
   await tester.runAsync(() async {
     final imagem = await objeto.toImage(pixelRatio: 2);
     final bytes = await imagem.toByteData(format: ui.ImageByteFormat.png);
-    File('$_saida/$nome.png').writeAsBytesSync(bytes!.buffer.asUint8List());
+    // No Windows, um PNG aberto em outro programa (visualizador, prévia)
+    // não pode ser sobrescrito (erro 1224). Tenta algumas vezes e, se
+    // continuar preso, falha dizendo isso, e não com um erro de E/S cru.
+    final arquivo = File('$_saida/$nome.png');
+    for (var tentativa = 1; ; tentativa++) {
+      try {
+        arquivo.writeAsBytesSync(bytes!.buffer.asUint8List());
+        break;
+      } on FileSystemException catch (e) {
+        if (tentativa == 5) {
+          fail('${arquivo.path} está aberto em outro programa; feche-o e '
+              'rode de novo (${e.osError?.message})');
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+      }
+    }
   });
 }
 
@@ -233,6 +248,72 @@ void main() {
       expect(find.text('Pendente'), findsOneWidget);
       expect(find.text('Sincronizado'), findsNWidgets(2));
       await _capturar(tester, 'historico');
+      await tester.pumpWidget(const SizedBox());
+    },
+    skip: _saida == null,
+  );
+
+  // Etapa 8: detalhe de uma sessão com as três faixas e erros. O simulador
+  // só gera acertos, então a sessão entra direto na fila, como o gravador a
+  // deixaria (classe "medio" em tudo, como o simulador carimba).
+  testWidgets(
+    'detalhe: três faixas e erro',
+    (tester) async {
+      tester.view.physicalSize = const Size(390 * 2, 844 * 2);
+      tester.view.devicePixelRatio = 2;
+      addTearDown(tester.view.reset);
+      SharedPreferences.resetStatic();
+      SharedPreferences.setMockInitialValues({});
+      FilaSessoes.reiniciarParaTestes();
+      await tester.runAsync(_carregarFontes);
+
+      LanceLocal lance(int bola, String resultado, num angulo) => LanceLocal(
+        uuidLance: 'cap-$bola',
+        idLanceFirmware: 'L-${bola * 3000}-$bola',
+        bola: bola,
+        resultado: resultado,
+        classe: resultado == 'erro' ? 'sem_impacto' : 'medio',
+        knockout: false,
+        angulo: angulo,
+        tsMs: bola * 3000,
+      );
+      await FilaSessoes.doApp.abrir(
+        SessaoLocal(
+          uuidSessao: 'captura-detalhe',
+          treinoVersaoId: 7,
+          dificuldade: 0,
+          iniciadaEm: '2026-09-19T14:00:00.000Z',
+          encerradaEm: '2026-09-19T14:01:00.000Z',
+          treinoTitulo: 'Reação rápida',
+          lances: [
+            lance(1, 'acerto', 45.0),
+            lance(2, 'acerto', 31.5),
+            lance(3, 'acerto', 61.5),
+            lance(4, 'erro', 0.0),
+            lance(5, 'acerto', 52.0),
+            lance(6, 'acerto', 64.0),
+            lance(7, 'acerto', 26.0),
+            lance(8, 'erro', 0.0),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        RepaintBoundary(
+          child: SmartTennisArenaApp(
+            initialLocation: '${Routes.historicoDetalhe}?sessao=captura-detalhe',
+          ),
+        ),
+      );
+      for (var i = 0; i < 4; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('Lances (8)'), findsOneWidget);
+      expect(find.text('Lance 02 · Fraco'), findsOneWidget);
+      expect(find.text('Lance 01 · Médio'), findsOneWidget);
+      expect(find.text('Lance 03 · KO'), findsOneWidget);
+      expect(find.text('Lance 04 · Sem impacto'), findsOneWidget);
+      await _capturar(tester, 'detalhe');
       await tester.pumpWidget(const SizedBox());
     },
     skip: _saida == null,

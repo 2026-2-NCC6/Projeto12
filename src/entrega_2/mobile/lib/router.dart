@@ -120,7 +120,10 @@ GoRouter createRouter({String initialLocation = Routes.login}) {
           treino: q(s, 'treino') ?? '',
         ),
       ),
-      stacked(Routes.historicoDetalhe, (_) => const DetalheScreen()),
+      stacked(
+        Routes.historicoDetalhe,
+        (s) => DetalheScreen(uuidSessao: q(s, 'sessao')),
+      ),
       stacked(
         Routes.perfilRecalibrar,
         (_) => const CalibracaoScreen(recalibrar: true),

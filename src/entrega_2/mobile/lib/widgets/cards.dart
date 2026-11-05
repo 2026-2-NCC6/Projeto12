@@ -179,10 +179,11 @@ class ShotRow extends StatelessWidget {
         AppColors.textWarning,
       ),
     };
+    // Grau com uma casa (o firmware mede inclinação, não aceleração).
     final detalhe = switch (shot.resultado) {
-      _ when shot.g == null => 'sem impacto registrado',
-      ShotResult.ko => '${fmtDec(shot.g!)} g · derrubou o boneco',
-      _ => '${fmtDec(shot.g!)} g',
+      _ when shot.angulo == null => 'sem impacto registrado',
+      ShotResult.ko => '${fmtDec(shot.angulo!.toDouble())}° · derrubou o boneco',
+      _ => '${fmtDec(shot.angulo!.toDouble())}°',
     };
     return SurfaceCard(
       radius: AppRadius.r16,
@@ -196,7 +197,7 @@ class ShotRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Lance ${twoDigits(shot.n)} · ${shot.forca}',
+                  'Lance ${twoDigits(shot.n)} · ${shot.faixa}',
                   style: AppText.titleM,
                 ),
                 Text(detalhe, style: AppText.bodyS.c(AppColors.textSecondary)),

@@ -11,6 +11,7 @@ import '../../theme/app_text.dart';
 import '../../widgets/buttons.dart';
 import '../../widgets/cards.dart';
 import '../../widgets/layout.dart';
+import 'sessao_nao_encontrada.dart';
 
 /// 4.3 Sessão · Finalização (21:897) — resumo da sessão que acabou de
 /// acontecer, calculado sobre os lances gravados na fila local.
@@ -92,32 +93,11 @@ class _ResumoScreenState extends State<ResumoScreen> {
                 child: CircularProgressIndicator(color: AppColors.bgBrand),
               )
             : _resumo == null
-            ? _naoEncontrada(context)
+            ? const SessaoNaoEncontrada()
             : _conteudo(context, _resumo!),
       ),
     );
   }
-
-  Widget _naoEncontrada(BuildContext context) => SafeArea(
-    child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        spacing: 16,
-        children: [
-          Text(
-            'Sessão não encontrada neste aparelho.',
-            style: AppText.titleM,
-            textAlign: TextAlign.center,
-          ),
-          AppButton(
-            'Nova sessão',
-            onPressed: () => context.go(Routes.sessao),
-          ),
-        ],
-      ),
-    ),
-  );
 
   Widget _conteudo(BuildContext context, ResumoSessao r) {
     final pendentes = _pendentes;

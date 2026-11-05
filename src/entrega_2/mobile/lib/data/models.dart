@@ -94,29 +94,30 @@ class Session {
   final bool separada;
 }
 
+/// Tratamento visual do lance: acerto (fraco ou médio), KO ou erro.
 enum ShotResult { acerto, erro, ko }
 
+/// Um lance como a tela de detalhe mostra.
 class Shot {
   const Shot({
     required this.n,
-    required this.forca,
+    required this.faixa,
     required this.pontos,
     required this.resultado,
-    this.g,
-    this.reacaoMs,
+    this.angulo,
   });
 
+  /// Número da bola (contador do app, de 1 a N).
   final int n;
 
-  /// Rótulo de força: "Médio", "Forte", "KO", "Sem impacto".
-  final String forca;
+  /// "Fraco", "Médio", "KO" ou "Sem impacto". Não existe "Forte": o KO é a
+  /// faixa forte.
+  final String faixa;
 
-  /// Pico de aceleração em g (nulo quando não houve impacto).
-  final double? g;
+  /// Ângulo de inclinação em graus, como o firmware mede (nulo no erro).
+  final num? angulo;
 
-  /// Tempo de reação medido no firmware. Guardado para a pontuação, mas não
-  /// aparece em nenhuma tela.
-  final int? reacaoMs;
+  /// Pela regra local de pontuação.
   final int pontos;
   final ShotResult resultado;
 }
