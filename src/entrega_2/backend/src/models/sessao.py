@@ -97,7 +97,11 @@ class Lance(Base):
     # o log serial: millis() zera a cada boot, entao NAO e chave de nada.
     id_lance_firmware: Mapped[Optional[str]] = mapped_column(String(40))
 
-    sessao_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessao.id"))
+    # ON DELETE CASCADE: apagar a sessao (por SQL, script ou painel) leva os
+    # lances junto.
+    sessao_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sessao.id", ondelete="CASCADE")
+    )
     bola: Mapped[int]
     resultado: Mapped[TipoLance] = mapped_column(Enum(TipoLance, name="tipo_lance"))
     # classe e knockout sao interpretacoes do firmware: guardadas como
@@ -114,4 +118,7 @@ class Lance(Base):
     __table_args__ = (
         Index("ix_lance_sessao_ts", "sessao_id", "ts_ms"),
         UniqueConstraint("sessao_id", "uuid_lance", name="uq_lance_sessao_uuid"),
+        # A pontuacao ordena por `bola`: numero repetido numa sessao daria
+        # placares diferentes conforme a ordem de chegada.
+        UniqueConstraint("sessao_id", "bola", name="uq_lance_sessao_bola"),
     )

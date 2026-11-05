@@ -1,3 +1,4 @@
+from decimal import Decimal
 from datetime import date
 
 from pydantic import BaseModel, EmailStr, Field
@@ -46,8 +47,12 @@ class UsuarioSaida(BaseModel):
 class CalibracaoEntrada(BaseModel):
     """Nivel de calibracao / dificuldade em graus a ser adicionado aos limiares."""
 
-    calibracao: float = Field(
-        ge=0.0,
-        le=45.0,
+    # Mesma validacao da `dificuldade` de SessaoEntrada: no maximo 1 casa.
+    # Antes o servidor aceitava guardar aqui uma precisao que ele mesmo
+    # recusava quando o valor voltava como dificuldade de uma sessao.
+    calibracao: Decimal = Field(
+        ge=0,
+        le=45,
+        decimal_places=1,
         description="Graus adicionais de dificuldade para acertos fortes no Tobias",
     )

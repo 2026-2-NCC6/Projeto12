@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -84,10 +83,15 @@ def _excluir_como_o_painel(db, sessao_id, com_gancho=True):
     db.commit()
 
 
-def test_excluir_sessao_com_lances_falharia_sem_o_gancho(banco_com_fk):
+def test_sem_o_gancho_o_esquema_ja_cascateia(banco_com_fk):
+    """Desde o ON DELETE CASCADE em lance.sessao_id, o gancho do painel e
+    redundante: mesmo sem ele, a exclusao leva os lances junto."""
     db, sessao_id = banco_com_fk
-    with pytest.raises(IntegrityError):
-        _excluir_como_o_painel(db, sessao_id, com_gancho=False)
+
+    _excluir_como_o_painel(db, sessao_id, com_gancho=False)
+
+    assert db.get(Sessao, sessao_id) is None
+    assert db.query(Lance).count() == 0
 
 
 def test_excluir_sessao_pelo_painel_leva_os_lances_junto(banco_com_fk):

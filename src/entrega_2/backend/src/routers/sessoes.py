@@ -1,7 +1,9 @@
 import logging
+from datetime import timezone
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import AwareDatetime
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,7 +15,14 @@ from src.models.sessao import Lance, Sessao
 from src.models.treino import Treino, TreinoVersao
 from src.models.usuario import Usuario
 from src.routers.treinos import acessivel_para_ingestao
-from src.schemas.sessao import LoteEntrada, LoteSaida, ResumoSessaoSaida, SessaoEntrada
+from src.schemas.sessao import (
+    LoteEntrada,
+    LoteSaida,
+    PaginaSessoes,
+    ResumoSessaoSaida,
+    SessaoEntrada,
+    SessaoListada,
+)
 
 router = APIRouter(prefix="/v1/sessions", tags=["sessoes"])
 
@@ -60,11 +69,14 @@ def comparar_com_cliente(
     if dados.pontuacao_cliente == sessao.pontuacao_total:
         return
 
-    # Sem dados pessoais: so ids internos e numeros.
+    # Sem dados pessoais: ids e numeros. O uuid_sessao e gerado pelo celular
+    # e e o que o app conhece: com ele se acha a sessao sem correlacionar
+    # por horario.
     logger.warning(
-        "pontuacao_divergente sessao_id=%s usuario_id=%s pontuacao_servidor=%s "
-        "pontuacao_cliente=%s versao_regra=%s",
+        "pontuacao_divergente sessao_id=%s uuid_sessao=%s usuario_id=%s "
+        "pontuacao_servidor=%s pontuacao_cliente=%s versao_regra=%s",
         sessao.id,
+        sessao.uuid_sessao,
         usuario.id,
         sessao.pontuacao_total,
         dados.pontuacao_cliente,
@@ -72,6 +84,7 @@ def comparar_com_cliente(
         extra={
             "evento": "pontuacao_divergente",
             "sessao_id": str(sessao.id),
+            "uuid_sessao": str(sessao.uuid_sessao),
             "usuario_id": usuario.id,
             "pontuacao_servidor": sessao.pontuacao_total,
             "pontuacao_cliente": dados.pontuacao_cliente,
@@ -148,10 +161,25 @@ def ingerir_sessao(
         ).all()
     ) if dados.lances else set()
 
+    # Bolas que a sessao ja tem no banco. Um lance NOVO com uma delas (outro
+    # uuid_lance, mesma bola) violaria uq_lance_sessao_bola: vira 422, como a
+    # bola repetida dentro do payload, e nao um 500 de integridade.
+    bolas_gravadas = set(
+        db.scalars(select(Lance.bola).where(Lance.sessao_id == sessao.id)).all()
+    ) if situacao == "ja_existia" else set()
+
     novos = []
     for l in dados.lances:
         if l.uuid_lance in ja_vistos:
             continue
+        if l.bola in bolas_gravadas:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"bola {l.bola} ja registrada na sessao {dados.uuid_sessao} "
+                    "com outro lance"
+                ),
+            )
         ja_vistos.add(l.uuid_lance)
         novos.append(
             Lance(
@@ -207,6 +235,67 @@ def ingerir_com_savepoint(
         except IntegrityError:
             if tentativa == 2:
                 raise
+
+
+@router.get("", response_model=PaginaSessoes)
+def listar(
+    db: Session = Depends(get_db),
+    usuario: Usuario = Depends(usuario_atual),
+    de: AwareDatetime | None = None,
+    ate: AwareDatetime | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    """Sessoes do usuario autenticado, da mais recente para a mais antiga (RF13).
+
+    `de` e `ate` filtram por `iniciada_em` e sao inclusivos; exigem fuso
+    (sem fuso, 422). Paginacao e envelope iguais aos de GET /v1/drills.
+
+    So as proprias sessoes, SEMPRE: o dono vem do token, nunca de
+    parametro, e nao ha excecao para admin nesta rota.
+    """
+    if de is not None and ate is not None and de > ate:
+        raise HTTPException(status_code=422, detail="'de' nao pode ser depois de 'ate'")
+
+    condicoes = [Sessao.usuario_id == usuario.id]
+    # UTC, como a ingestao grava (SessaoEntrada.em_utc): compara o mesmo
+    # instante em qualquer banco, inclusive o SQLite dos testes.
+    if de is not None:
+        condicoes.append(Sessao.iniciada_em >= de.astimezone(timezone.utc))
+    if ate is not None:
+        condicoes.append(Sessao.iniciada_em <= ate.astimezone(timezone.utc))
+
+    total = db.scalar(select(func.count()).select_from(Sessao).where(*condicoes))
+
+    linhas = db.execute(
+        select(Sessao, Treino.titulo, TreinoVersao.numero)
+        .join(TreinoVersao, TreinoVersao.id == Sessao.treino_versao_id)
+        .join(Treino, Treino.id == TreinoVersao.treino_id)
+        .where(*condicoes)
+        # Desempate estavel, para a paginacao nao repetir nem pular sessao.
+        .order_by(Sessao.iniciada_em.desc(), Sessao.uuid_sessao.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+
+    items = [
+        SessaoListada(
+            uuid_sessao=s.uuid_sessao,
+            treino_titulo=titulo,
+            treino_versao=numero,
+            iniciada_em=s.iniciada_em,
+            encerrada_em=s.encerrada_em,
+            pontuacao_total=s.pontuacao_total,
+            versao_pontuacao=s.versao_pontuacao,
+            acertos=s.acertos,
+            erros=s.erros,
+            kos=s.kos,
+            melhor_sequencia=s.melhor_sequencia,
+            precisao=s.precisao,
+        )
+        for s, titulo, numero in linhas
+    ]
+    return PaginaSessoes(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post("", response_model=LoteSaida, status_code=200)

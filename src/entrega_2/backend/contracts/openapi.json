@@ -562,6 +562,100 @@
       }
     },
     "/v1/sessions": {
+      "get": {
+        "tags": [
+          "sessoes"
+        ],
+        "summary": "Listar",
+        "description": "Sessoes do usuario autenticado, da mais recente para a mais antiga (RF13).\n\n`de` e `ate` filtram por `iniciada_em` e sao inclusivos; exigem fuso\n(sem fuso, 422). Paginacao e envelope iguais aos de GET /v1/drills.\n\nSo as proprias sessoes, SEMPRE: o dono vem do token, nunca de\nparametro, e nao ha excecao para admin nesta rota.",
+        "operationId": "listar_v1_sessions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "de",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "De"
+            }
+          },
+          {
+            "name": "ate",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ate"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaSessoes"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "sessoes"
@@ -569,15 +663,20 @@
         "summary": "Ingerir",
         "description": "Recebe um lote de sessoes do app (US-704 / RF19), de forma idempotente.\n\nReenviar o mesmo lote nao duplica nada. O codigo HTTP descreve o\nlote: e sempre 200, e o resultado de cada sessao vem em `situacao`.\n422 so para payload malformado, antes de qualquer acesso ao banco.\nO dono das sessoes e quem esta com o token, nunca o corpo.",
         "operationId": "ingerir_v1_sessions_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/LoteEntrada"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -600,12 +699,7 @@
               }
             }
           }
-        },
-        "security": [
-          {
-            "HTTPBearer": []
-          }
-        ]
+        }
       }
     },
     "/v1/admin/usuarios": {
@@ -739,9 +833,16 @@
       "CalibracaoEntrada": {
         "properties": {
           "calibracao": {
-            "type": "number",
-            "maximum": 45.0,
-            "minimum": 0.0,
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 45.0,
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
             "title": "Calibracao",
             "description": "Graus adicionais de dificuldade para acertos fortes no Tobias"
           }
@@ -915,6 +1016,38 @@
           "personalizado"
         ],
         "title": "Nivel"
+      },
+      "PaginaSessoes": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessaoListada"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit"
+          },
+          "offset": {
+            "type": "integer",
+            "title": "Offset"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PaginaSessoes",
+        "description": "Mesmo envelope de PaginaTreinos, para o cliente tratar os dois igual."
       },
       "PaginaTreinos": {
         "properties": {
@@ -1124,6 +1257,106 @@
         ],
         "title": "SessaoEntrada",
         "description": "Uma sessao do lote.\n\nAgregados (acertos, kos, precisao...) nao fazem parte do contrato:\nse o cliente mandar, sao ignorados e o servidor recalcula."
+      },
+      "SessaoListada": {
+        "properties": {
+          "uuid_sessao": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Uuid Sessao"
+          },
+          "treino_titulo": {
+            "type": "string",
+            "title": "Treino Titulo"
+          },
+          "treino_versao": {
+            "type": "integer",
+            "title": "Treino Versao"
+          },
+          "iniciada_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Iniciada Em"
+          },
+          "encerrada_em": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrada Em"
+          },
+          "pontuacao_total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pontuacao Total"
+          },
+          "versao_pontuacao": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versao Pontuacao"
+          },
+          "acertos": {
+            "type": "integer",
+            "title": "Acertos"
+          },
+          "erros": {
+            "type": "integer",
+            "title": "Erros"
+          },
+          "kos": {
+            "type": "integer",
+            "title": "Kos"
+          },
+          "melhor_sequencia": {
+            "type": "integer",
+            "title": "Melhor Sequencia"
+          },
+          "precisao": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precisao"
+          }
+        },
+        "type": "object",
+        "required": [
+          "uuid_sessao",
+          "treino_titulo",
+          "treino_versao",
+          "iniciada_em",
+          "encerrada_em",
+          "pontuacao_total",
+          "versao_pontuacao",
+          "acertos",
+          "erros",
+          "kos",
+          "melhor_sequencia",
+          "precisao"
+        ],
+        "title": "SessaoListada",
+        "description": "Uma sessao em GET /v1/sessions: so os agregados, sem os lances.\n\nO app ja tem os lances localmente e o Dashboard so precisa dos\nagregados. Se um dia fizer falta, vira um endpoint de detalhe."
       },
       "TipoLance": {
         "type": "string",

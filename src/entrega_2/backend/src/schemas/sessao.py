@@ -1,5 +1,5 @@
 import uuid
-from datetime import timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Literal, Optional
 
@@ -86,6 +86,22 @@ class SessaoEntrada(BaseModel):
         return valor.astimezone(timezone.utc) if valor is not None else None
 
     @model_validator(mode="after")
+    def bolas_sem_repeticao(self):
+        """Duas jogadas diferentes com o mesmo numero de bola: 422.
+
+        A pontuacao ordena por `bola`; numeros repetidos dariam placares
+        diferentes conforme a ordem de chegada. O MESMO lance repetido (mesmo
+        uuid_lance) nao conta: e reenvio, e a ingestao o absorve.
+        """
+        por_bola: dict[int, set[uuid.UUID]] = {}
+        for l in self.lances:
+            por_bola.setdefault(l.bola, set()).add(l.uuid_lance)
+        repetidas = sorted(b for b, uuids in por_bola.items() if len(uuids) > 1)
+        if repetidas:
+            raise ValueError(f"bola repetida na sessao: {repetidas}")
+        return self
+
+    @model_validator(mode="after")
     def datas_em_ordem(self):
         if self.encerrada_em is not None and self.encerrada_em < self.iniciada_em:
             raise ValueError("encerrada_em nao pode ser anterior a iniciada_em")
@@ -116,3 +132,33 @@ class ResumoSessaoSaida(BaseModel):
 
 class LoteSaida(BaseModel):
     sessoes: list[ResumoSessaoSaida]
+
+
+class SessaoListada(BaseModel):
+    """Uma sessao em GET /v1/sessions: so os agregados, sem os lances.
+
+    O app ja tem os lances localmente e o Dashboard so precisa dos
+    agregados. Se um dia fizer falta, vira um endpoint de detalhe.
+    """
+
+    uuid_sessao: uuid.UUID
+    treino_titulo: str
+    treino_versao: int
+    iniciada_em: datetime
+    encerrada_em: Optional[datetime]
+    pontuacao_total: Optional[int]
+    versao_pontuacao: Optional[int]
+    acertos: int
+    erros: int
+    kos: int
+    melhor_sequencia: int
+    precisao: Optional[float]
+
+
+class PaginaSessoes(BaseModel):
+    """Mesmo envelope de PaginaTreinos, para o cliente tratar os dois igual."""
+
+    items: list[SessaoListada]
+    total: int
+    limit: int
+    offset: int
