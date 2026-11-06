@@ -10,3 +10,6 @@ email-validator
 sqladmin
 itsdangerous
 greenlet
+# Base de fusos para o zoneinfo (ranking em America/Sao_Paulo): a imagem
+# python:3.11-slim nao garante /usr/share/zoneinfo.
+tzdata

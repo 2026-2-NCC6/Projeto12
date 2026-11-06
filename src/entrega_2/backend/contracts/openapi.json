@@ -702,6 +702,59 @@
         }
       }
     },
+    "/v1/ranking": {
+      "get": {
+        "tags": [
+          "ranking"
+        ],
+        "summary": "Ranking",
+        "description": "Os 20 primeiros da metrica e, a parte, a posicao de quem chamou.\n\nOrdem: maior valor primeiro; empate decidido pelo apelido (unico), para\na ordem nao mudar entre duas chamadas. Posicoes sao sequenciais.\n\n`periodo`: em `pontos` e `evolucao`, os ultimos 30 dias (a evolucao os\ncompara com os 30 anteriores); em `frequencia`, os 7 dias de calendario\nde Sao Paulo terminados hoje.",
+        "operationId": "ranking_v1_ranking_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "metrica",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "pontos",
+                "frequencia",
+                "evolucao"
+              ],
+              "type": "string",
+              "title": "Metrica"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RankingSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/admin/usuarios": {
       "get": {
         "tags": [
@@ -884,6 +937,42 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ItemRanking": {
+        "properties": {
+          "posicao": {
+            "type": "integer",
+            "title": "Posicao"
+          },
+          "apelido": {
+            "type": "string",
+            "title": "Apelido"
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Valor"
+          },
+          "sessoes": {
+            "type": "integer",
+            "title": "Sessoes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "posicao",
+          "apelido",
+          "valor",
+          "sessoes"
+        ],
+        "title": "ItemRanking",
+        "description": "Uma linha do ranking.\n\nPRIVACIDADE: estes quatro campos sao tudo o que um usuario ve de outro.\nNao acrescente id, nome nem e-mail aqui: o apelido ja e unico e basta\npara o ranking. O teste test_nada_alem_do_apelido varre a resposta\ninteira atras de qualquer campo a mais."
       },
       "LanceEntrada": {
         "properties": {
@@ -1120,6 +1209,67 @@
           "infantil"
         ],
         "title": "Perfil"
+      },
+      "Periodo": {
+        "properties": {
+          "de": {
+            "type": "string",
+            "format": "date-time",
+            "title": "De"
+          },
+          "ate": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ate"
+          }
+        },
+        "type": "object",
+        "required": [
+          "de",
+          "ate"
+        ],
+        "title": "Periodo"
+      },
+      "RankingSaida": {
+        "properties": {
+          "metrica": {
+            "type": "string",
+            "enum": [
+              "pontos",
+              "frequencia",
+              "evolucao"
+            ],
+            "title": "Metrica"
+          },
+          "periodo": {
+            "$ref": "#/components/schemas/Periodo"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemRanking"
+            },
+            "type": "array",
+            "title": "Itens"
+          },
+          "voce": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VoceRanking"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "metrica",
+          "periodo",
+          "itens",
+          "voce"
+        ],
+        "title": "RankingSaida"
       },
       "ResumoSessaoSaida": {
         "properties": {
@@ -1629,6 +1779,47 @@
         ],
         "title": "VersaoSaida",
         "description": "Os parametros de um treino em uma versao.\n\n`id` e o que o app guarda ao iniciar o treino e manda em\nPOST /v1/sessions: a sessao fica presa a versao que foi jogada,\nmesmo que o treino seja editado antes da sincronizacao."
+      },
+      "VoceRanking": {
+        "properties": {
+          "posicao": {
+            "type": "integer",
+            "title": "Posicao"
+          },
+          "apelido": {
+            "type": "string",
+            "title": "Apelido"
+          },
+          "valor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Valor"
+          },
+          "sessoes": {
+            "type": "integer",
+            "title": "Sessoes"
+          },
+          "oculto": {
+            "type": "boolean",
+            "title": "Oculto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "posicao",
+          "apelido",
+          "valor",
+          "sessoes",
+          "oculto"
+        ],
+        "title": "VoceRanking",
+        "description": "A linha de quem chamou.\n\n`oculto`: verdadeiro quando a pessoa foi deixada fora da lista publica\npelas regras de privacidade (menor de idade, sem data de nascimento);\nfalso quando so esta abaixo do corte dos 20. A pessoa fica sabendo de si\nmesma, nada sobre terceiros. Por isso o campo existe SO aqui, e nao em\nItemRanking: nas linhas dos outros seria um dado sobre eles."
       }
     },
     "securitySchemes": {

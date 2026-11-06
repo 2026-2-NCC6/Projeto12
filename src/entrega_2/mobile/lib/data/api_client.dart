@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'api_config.dart';
 import 'dashboard.dart';
 import 'models.dart';
+import 'ranking.dart';
 
 // Cliente HTTP dos endpoints da API (`/v1/auth/*` e `/v1/drills`).
 //
@@ -334,6 +335,18 @@ class ApiClient {
       final total = json['total'] as int;
       if (itens.isEmpty || sessoes.length >= total) return sessoes;
     }
+  }
+
+  /// GET /v1/ranking → os 20 primeiros da [metrica] e, à parte, a posição
+  /// do dono do [token] (`voce`), mesmo fora da lista. 401 = token expirado.
+  Future<RespostaRanking> ranking(String token, MetricaRanking metrica) async {
+    final json = await _enviar(
+      () => _http.get(
+        _uri('/v1/ranking').replace(queryParameters: {'metrica': metrica.api}),
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+    );
+    return RespostaRanking.fromJson(json);
   }
 
   Map<String, String> _jsonComToken(String token) => {

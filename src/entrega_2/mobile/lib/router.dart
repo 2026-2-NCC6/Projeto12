@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'data/ranking.dart';
 import 'screens/auth/cadastro_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/connect/calibracao_screen.dart';
@@ -149,17 +150,16 @@ GoRouter createRouter({String initialLocation = Routes.login}) {
           ),
           tab(Routes.historico, const HistoricoScreen()),
           tab(Routes.historicoDashboard, const DashboardScreen()),
+          // /ranking abre em Pontos; as outras duas rotas abrem direto na aba.
+          // Dentro da tela, os chips trocam de aba sem navegar.
+          tab(Routes.ranking, const RankingScreen()),
           tab(
-            Routes.ranking,
-            const RankingScreen(aba: AbaRanking.consistencia),
+            Routes.rankingFrequencia,
+            const RankingScreen(aba: MetricaRanking.frequencia),
           ),
           tab(
             Routes.rankingEvolucao,
-            const RankingScreen(aba: AbaRanking.evolucao),
-          ),
-          tab(
-            Routes.rankingFrequencia,
-            const RankingScreen(aba: AbaRanking.frequencia),
+            const RankingScreen(aba: MetricaRanking.evolucao),
           ),
           tab(Routes.perfil, const PerfilScreen()),
         ],
