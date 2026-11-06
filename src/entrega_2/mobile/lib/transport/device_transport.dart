@@ -44,6 +44,24 @@ enum DeviceCommand {
   finalizar,
 }
 
+/// Estados de sessão que o Tobias confirma por BLE. Só entram aqui os que o
+/// app usa; qualquer outro `status` do firmware é ignorado.
+enum StatusTobias {
+  /// `{"status":"PAUSADO","bola_atual":N,"total":T}`
+  pausado,
+
+  /// `{"status":"RETOMADO","bola_atual":N,"total":T}`
+  retomado,
+}
+
+/// O [StatusTobias] do campo `status` de um JSON do firmware, ou `null` se
+/// for um status que o app não trata (ou nem texto for).
+StatusTobias? statusTobiasDe(Object? status) => switch (status) {
+  'PAUSADO' => StatusTobias.pausado,
+  'RETOMADO' => StatusTobias.retomado,
+  _ => null,
+};
+
 class DeviceStatus {
   const DeviceStatus({
     required this.nome,
@@ -67,6 +85,9 @@ class DeviceStatus {
 /// Mandar ms preserva o `intervalo_ms` exato do treino (2500 ms não vira
 /// "3"); a API garante intervalo_ms >= 500. A calibração vai com 1 casa,
 /// a mesma precisão que a API aceita para a dificuldade.
+///
+/// Pausar e retomar têm comandos próprios no firmware: a sessão continua a
+/// mesma, com a contagem preservada. Nada de `STOP` + `TREINO:` novo.
 String montarComando(
   DeviceCommand cmd, {
   int lances = 15,
@@ -76,14 +97,19 @@ String montarComando(
   final calib = calibracao > 0.0 ? calibracao.toStringAsFixed(1) : '0.0';
   return switch (cmd) {
     DeviceCommand.iniciarCalibracao => 'CALIBRAR:5\n',
-    DeviceCommand.iniciarSessao ||
-    DeviceCommand.retomar => 'TREINO:$lances:$intervaloMs:$calib\n',
-    DeviceCommand.pausar || DeviceCommand.finalizar => 'STOP\n',
+    DeviceCommand.iniciarSessao => 'TREINO:$lances:$intervaloMs:$calib\n',
+    DeviceCommand.pausar => 'PAUSAR\n',
+    DeviceCommand.retomar => 'RETOMAR\n',
+    DeviceCommand.finalizar => 'STOP\n',
   };
 }
 
 abstract class DeviceTransport {
   Stream<ImpactEvent> get events;
+
+  /// Estados confirmados pelo Tobias (pausado, retomado).
+  Stream<StatusTobias> get estados;
+
   Future<void> send(
     DeviceCommand cmd, {
     int lances = 15,

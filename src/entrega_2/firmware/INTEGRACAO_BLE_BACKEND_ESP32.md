@@ -54,7 +54,9 @@ O aplicativo envia strings simples de comando pela **Característica RX**:
 | `CALIBRAR` | Opcional (`:QTD`) | Inicia o modo de calibração com envio bola a bola (padrão: 5 bolas). | `CALIBRAR` ou `CALIBRAR:5` |
 | `TREINO` | Obrigatório (`:QTD`) | Inicia treino silencioso via BLE; envia requisição única ao atingir a meta. | `TREINO:15` ou `TREINO:20` |
 | `STOP` | N/A | Interrompe imediatamente qualquer sessão ativa e silencia o som. | `STOP` |
-| `PING` | N/A | Checa se o Tobias está ativo e qual o estado atual. | `PING` |
+| `PAUSAR` | N/A | Pausa o treino (só vale em `TREINO`). Preserva bola atual e contadores, congela a janela de lance e ignora impactos. Responde `{"status":"PAUSADO","bola_atual":N,"total":T}`. | `PAUSAR` |
+| `RETOMAR` | N/A | Retoma o treino pausado com a janela de lance inteira, depois que o boneco estabiliza. Responde `{"status":"RETOMADO","bola_atual":N,"total":T}`. | `RETOMAR` |
+| `PING` | N/A | Checa se o Tobias está ativo e qual o estado atual (`AGUARDANDO`, `CALIBRACAO`, `TREINO` ou `PAUSADO`). | `PING` |
 
 ---
 

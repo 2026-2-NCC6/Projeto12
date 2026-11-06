@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -8,6 +10,7 @@ import 'package:smart_tennis_arena_mobile/data/models.dart';
 import 'package:smart_tennis_arena_mobile/screens/sessao/em_andamento_screen.dart';
 import 'package:smart_tennis_arena_mobile/state/device_state.dart';
 import 'package:smart_tennis_arena_mobile/state/sessao_ativa.dart';
+import 'package:smart_tennis_arena_mobile/transport/ble_transport.dart';
 import 'package:smart_tennis_arena_mobile/transport/device_transport.dart';
 
 /// Um treino como a API devolve em `GET /v1/drills`, com valores que não
@@ -35,6 +38,45 @@ Drill _drillDaApi() => PaginaTreinos.fromJson({
   'total': 1,
 }).itens.single;
 
+/// Tobias falso que confirma PAUSAR/RETOMAR (ou não, com [responde]).
+class _TobiasFalso implements DeviceTransport {
+  final _estados = StreamController<StatusTobias>.broadcast();
+  final comandos = <String>[];
+  var responde = true;
+
+  @override
+  Stream<ImpactEvent> get events => const Stream.empty();
+
+  @override
+  Stream<StatusTobias> get estados => _estados.stream;
+
+  @override
+  Future<void> send(
+    DeviceCommand cmd, {
+    int lances = 15,
+    int intervaloMs = 3000,
+    double calibracao = 0.0,
+  }) async {
+    final c = montarComando(
+      cmd,
+      lances: lances,
+      intervaloMs: intervaloMs,
+      calibracao: calibracao,
+    ).trim();
+    comandos.add(c);
+    if (!responde) return;
+    if (c == 'PAUSAR') _estados.add(StatusTobias.pausado);
+    if (c == 'RETOMAR') _estados.add(StatusTobias.retomado);
+  }
+
+  @override
+  Future<DeviceStatus> status() async =>
+      const DeviceStatus(nome: 'TOBIAS', conectado: true, bateria: 90);
+
+  @override
+  Future<void> disconnect() async {}
+}
+
 void main() {
   group('comando TREINO', () {
     test('leva quantidade, intervalo em ms e calibração do treino', () {
@@ -56,13 +98,148 @@ void main() {
       );
     });
 
-    test('retomar repete o mesmo TREINO; pausar e finalizar mandam STOP', () {
+    test('pausar e retomar têm comando próprio; só finalizar manda STOP', () {
+      expect(montarComando(DeviceCommand.pausar), 'PAUSAR\n');
       expect(
         montarComando(DeviceCommand.retomar, lances: 23, intervaloMs: 2500),
-        'TREINO:23:2500:0.0\n',
+        'RETOMAR\n',
       );
-      expect(montarComando(DeviceCommand.pausar), 'STOP\n');
       expect(montarComando(DeviceCommand.finalizar), 'STOP\n');
+    });
+  });
+
+  group('interpretador BLE', () {
+    test('PAUSADO e RETOMADO viram estados, não lances', () async {
+      final ble = BleTransport();
+      final estados = <StatusTobias>[];
+      final lances = <ImpactEvent>[];
+      final s1 = ble.estados.listen(estados.add);
+      final s2 = ble.events.listen(lances.add);
+
+      ble.interpretarLinha('{"status":"PAUSADO","bola_atual":4,"total":10}');
+      ble.interpretarLinha('{"status":"RETOMADO","bola_atual":4,"total":10}');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(estados, [StatusTobias.pausado, StatusTobias.retomado]);
+      expect(lances, isEmpty);
+      await s1.cancel();
+      await s2.cancel();
+    });
+
+    test('status desconhecido ou malformado não quebra o que vem depois', () async {
+      final ble = BleTransport();
+      final estados = <StatusTobias>[];
+      final lances = <ImpactEvent>[];
+      final s1 = ble.estados.listen(estados.add);
+      final s2 = ble.events.listen(lances.add);
+
+      for (final linha in [
+        '{"status":"QUALQUER_COISA_NOVA","resultado":"x","angulo":"y"}',
+        '{"status":42}',
+        '{"status":null}',
+        '{"status":"PONG","modo":"PAUSADO","bola_atual":4}',
+        'isto não é json',
+        '[1,2,3]',
+      ]) {
+        ble.interpretarLinha(linha);
+      }
+      ble.interpretarLinha(
+        '{"tipo":"TREINO","bola":5,"total":10,"resultado":"acerto",'
+        '"classe":"medio","knockout":false,"angulo":41.2,"t_ms":9000,'
+        '"id_lance":"L-9000-5"}',
+      );
+      ble.interpretarLinha('{"status":"PAUSADO","bola_atual":5,"total":10}');
+      await Future<void>.delayed(Duration.zero);
+
+      expect(lances, hasLength(1));
+      expect(lances.single.aPkG, 41.2);
+      expect(estados, [StatusTobias.pausado]);
+      await s1.cancel();
+      await s2.cancel();
+    });
+  });
+
+  group('tela em andamento: pausa', () {
+    Future<void> abrir(WidgetTester tester, _TobiasFalso tobias) async {
+      SharedPreferences.resetStatic();
+      SharedPreferences.setMockInitialValues({});
+      final sessao = SessaoAtiva.iniciar(_drillDaApi(), dificuldade: 0);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: EmAndamentoScreen(
+            sessao: sessao,
+            fila: FilaSessoes(),
+            transport: tobias,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+    }
+
+    // O texto da falha está sempre na árvore (reserva a altura do cartão);
+    // o que muda é se aparece.
+    bool falhaVisivel(WidgetTester tester) => tester
+        .widget<Visibility>(find.byKey(const ValueKey('cartao-falha')))
+        .visible;
+
+    Future<void> fechar(WidgetTester tester) async {
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    }
+
+    testWidgets('com confirmação, vai para pausado e volta', (tester) async {
+      final tobias = _TobiasFalso();
+      await abrir(tester, tobias);
+
+      await tester.tap(find.text('Pausar'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Continuar'), findsOneWidget);
+      expect(falhaVisivel(tester), isFalse);
+
+      await tester.tap(find.text('Continuar'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Pausar'), findsOneWidget);
+
+      await fechar(tester);
+      expect(tobias.comandos, ['TREINO:23:2500:0.0', 'PAUSAR', 'RETOMAR', 'STOP']);
+    });
+
+    testWidgets('sem confirmação em 1,5 s, não pausa e avisa', (tester) async {
+      final tobias = _TobiasFalso()..responde = false;
+      await abrir(tester, tobias);
+
+      await tester.tap(find.text('Pausar'));
+      await tester.pump();
+      // Esperando: a tela não foi para pausado, e Finalizar segue disponível.
+      expect(find.text('Continuar'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Finalizar sessão'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 1400));
+      expect(falhaVisivel(tester), isFalse);
+
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.text('Pausar'), findsOneWidget);
+      expect(find.text('Continuar'), findsNothing);
+      expect(falhaVisivel(tester), isTrue);
+      expect(
+        find.textContaining('O comando de pausa não foi confirmado'),
+        findsOneWidget,
+      );
+
+      // Tentar de novo limpa a mensagem; a resposta agora vem.
+      tobias.responde = true;
+      await tester.tap(find.text('Pausar'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Continuar'), findsOneWidget);
+      expect(falhaVisivel(tester), isFalse);
+
+      await fechar(tester);
+      expect(tobias.comandos.where((c) => c.startsWith('TREINO')), hasLength(1));
     });
   });
 

@@ -13,12 +13,17 @@ import 'package:smart_tennis_arena_mobile/transport/device_transport.dart';
 /// Faz o papel do Tobias: o teste emite os lances e lê os comandos.
 class _TobiasFalso implements DeviceTransport {
   final _eventos = StreamController<ImpactEvent>.broadcast();
+  final _estados = StreamController<StatusTobias>.broadcast();
   final comandos = <String>[];
 
   /// Chamado a cada comando, antes de registrá-lo.
   Future<void> Function(String comando)? aoReceber;
 
-  /// Simula o firmware: a contagem de bola recomeça a cada TREINO.
+  /// `false` simula o comando (ou a resposta) perdido no BLE.
+  var responde = true;
+
+  /// Simula o firmware: a contagem de bola recomeça a cada TREINO e é
+  /// preservada no PAUSAR/RETOMAR.
   var _bolaFirmware = 0;
   var _millis = 1000;
 
@@ -38,8 +43,14 @@ class _TobiasFalso implements DeviceTransport {
     );
   }
 
+  /// Confirmação vinda do aparelho, a qualquer momento (inclusive atrasada).
+  void confirmar(StatusTobias s) => _estados.add(s);
+
   @override
   Stream<ImpactEvent> get events => _eventos.stream;
+
+  @override
+  Stream<StatusTobias> get estados => _estados.stream;
 
   @override
   Future<void> send(
@@ -57,6 +68,8 @@ class _TobiasFalso implements DeviceTransport {
     await aoReceber?.call(c);
     if (c.startsWith('TREINO')) _bolaFirmware = 0;
     comandos.add(c);
+    if (responde && c == 'PAUSAR') confirmar(StatusTobias.pausado);
+    if (responde && c == 'RETOMAR') confirmar(StatusTobias.retomado);
   }
 
   @override
@@ -67,16 +80,26 @@ class _TobiasFalso implements DeviceTransport {
   Future<void> disconnect() async {}
 }
 
-/// Relógio controlado pelo teste: o `ts_ms` sai do que o teste mandar.
+/// Relógio controlado pelo teste: `ms` é o relógio de parede, que o teste
+/// avança; o cronômetro só acumula enquanto está rodando, como o Stopwatch.
 class _RelogioFalso implements Stopwatch {
   var ms = 0;
-  var _rodando = false;
+  var _acumulado = 0;
+  int? _desde;
 
   @override
-  void start() => _rodando = true;
+  void start() => _desde ??= ms;
 
   @override
-  int get elapsedMilliseconds => _rodando ? ms : 0;
+  void stop() {
+    if (_desde == null) return;
+    _acumulado += ms - _desde!;
+    _desde = null;
+  }
+
+  @override
+  int get elapsedMilliseconds =>
+      _acumulado + (_desde == null ? 0 : ms - _desde!);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -166,16 +189,23 @@ void main() {
     expect(depois.lances[4].resultado, 'erro');
   });
 
-  test('pausa no 4º de 10: retoma pedindo 6 e a numeração continua', () async {
-    final tobias = _TobiasFalso();
-    final relogio = _RelogioFalso();
-    final gravador = GravadorSessao(
-      sessao: _sessao(lances: 10, dificuldade: 2.5),
-      fila: FilaSessoes(),
-      transport: tobias,
-      relogio: relogio,
-    );
-    await gravador.iniciar();
+  group('pausa', () {
+    late _TobiasFalso tobias;
+    late _RelogioFalso relogio;
+    late GravadorSessao gravador;
+
+    setUp(() async {
+      tobias = _TobiasFalso();
+      relogio = _RelogioFalso();
+      gravador = GravadorSessao(
+        sessao: _sessao(lances: 10, dificuldade: 2.5),
+        fila: FilaSessoes(),
+        transport: tobias,
+        relogio: relogio,
+        esperaConfirmacao: const Duration(milliseconds: 50),
+      );
+      await gravador.iniciar();
+    });
 
     Future<void> lances(int n) async {
       for (var i = 0; i < n; i++) {
@@ -185,36 +215,73 @@ void main() {
       }
     }
 
-    await lances(4);
-    await gravador.pausar();
-    relogio.ms += 60000; // um minuto de pausa
-    await gravador.retomar();
-    await lances(6);
-    await _ate(gravador, 10);
-    await gravador.encerrar();
+    test('PAUSAR confirmado pausa, sem STOP nem TREINO: novo', () async {
+      await lances(4);
+      expect(await gravador.pausar(), isTrue);
+      expect(gravador.pausado.value, isTrue);
+      expect(tobias.comandos, ['TREINO:10:3000:2.5', 'PAUSAR']);
 
-    expect(tobias.comandos, [
-      'TREINO:10:3000:2.5',
-      'STOP',
-      'TREINO:6:3000:2.5',
-      'STOP',
-    ]);
+      expect(await gravador.retomar(), isTrue);
+      expect(gravador.pausado.value, isFalse);
+      expect(tobias.comandos, ['TREINO:10:3000:2.5', 'PAUSAR', 'RETOMAR']);
 
-    final s = (await gravador.fila.todas()).single;
-    final bolas = [for (final l in s.lances) l.bola];
-    expect(bolas, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+      await lances(6);
+      await _ate(gravador, 10);
+      await gravador.encerrar();
+      // O único STOP é o do fim da sessão.
+      expect(tobias.comandos, [
+        'TREINO:10:3000:2.5',
+        'PAUSAR',
+        'RETOMAR',
+        'STOP',
+      ]);
+    });
 
-    final ts = [for (final l in s.lances) l.tsMs];
-    for (var i = 1; i < ts.length; i++) {
-      expect(ts[i], greaterThan(ts[i - 1]), reason: 'ts_ms: $ts');
-    }
-    // O 5º lance veio depois do minuto de pausa: o relógio do app não zerou.
-    expect(ts[4], greaterThan(60000));
+    test('sem confirmação no prazo, não pausa', () async {
+      tobias.responde = false;
+      expect(await gravador.pausar(), isFalse);
+      expect(gravador.pausado.value, isFalse);
+      // O relógio seguiu rodando: o boneco não parou.
+      relogio.ms += 5000;
+      expect(relogio.elapsedMilliseconds, 5000);
+    });
 
-    // O firmware recomeçou do 1 no retomar; isso só fica no id do firmware.
-    expect(s.lances[4].idLanceFirmware, endsWith('-1'));
-    expect(s.lances[9].idLanceFirmware, endsWith('-6'));
-    expect(s.encerradaEm, isNotNull);
+    test('sem confirmação do RETOMAR, continua pausado', () async {
+      expect(await gravador.pausar(), isTrue);
+      tobias.responde = false;
+      expect(await gravador.retomar(), isFalse);
+      expect(gravador.pausado.value, isTrue);
+    });
+
+    test('confirmação atrasada ainda vale: a tela segue o aparelho', () async {
+      tobias.responde = false;
+      expect(await gravador.pausar(), isFalse);
+      tobias.confirmar(StatusTobias.pausado); // chega depois do prazo
+      await Future<void>.delayed(Duration.zero);
+      expect(gravador.pausado.value, isTrue);
+    });
+
+    test('ts_ms não inclui o tempo parado e a bola continua', () async {
+      await lances(4);
+      await gravador.pausar();
+      relogio.ms += 10 * 60 * 1000; // dez minutos de pausa
+      await gravador.retomar();
+      await lances(6);
+      await _ate(gravador, 10);
+      await gravador.encerrar();
+
+      final s = (await gravador.fila.todas()).single;
+      expect([for (final l in s.lances) l.bola], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+      final ts = [for (final l in s.lances) l.tsMs];
+      // Só tempo de treino: 3,1 s por lance, a pausa não entra.
+      expect(ts, [for (var i = 1; i <= 10; i++) i * 3100]);
+
+      // A contagem do firmware também atravessou a pausa (mesma sessão).
+      expect(s.lances[4].idLanceFirmware, endsWith('-5'));
+      expect(s.lances[9].idLanceFirmware, endsWith('-10'));
+      expect(s.encerradaEm, isNotNull);
+    });
   });
 
   test('sessão vai para o disco antes de o TREINO: sair', () async {
@@ -273,10 +340,6 @@ void main() {
 
     expect((await gravador.fila.todas()).single.lances, hasLength(3));
     expect(gravador.lancesRestantes, 0);
-    // Sem lances faltando, retomar não manda nada.
-    final antes = tobias.comandos.length;
-    await gravador.retomar();
-    expect(tobias.comandos, hasLength(antes));
   });
 
   test('formato gravado: chaves da API, datas com fuso, ângulo intacto', () async {

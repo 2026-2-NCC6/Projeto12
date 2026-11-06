@@ -13,7 +13,7 @@ Firmware oficial embarcado no ESP32 para a **Entrega 2** do projeto Tobias.
 4. **Reprodução Sonora de 3 Segundos com Fade-Out Suave:** Volume estabilizado em 20 (de 30), diminuindo gradualmente no último segundo para acabamento profissional sem distorções no alto-falante de 4Ω.
 5. **Comunicação Bluetooth BLE Bidirecional (Nordic UART Service):**
    - Nome anunciado: `TOBIAS`.
-   - Recebe comandos do aplicativo móvel (`CALIBRAR`, `TREINO:X`, `STOP`, `PING`).
+   - Recebe comandos do aplicativo móvel (`CALIBRAR`, `TREINO:X`, `PAUSAR`, `RETOMAR`, `STOP`, `PING`).
    - Notifica a cada bola em tempo real via JSON (`{"tipo":"TREINO","bola":1,"total":15,...}`).
    - Emite relatório consolidado ao final de cada sessão.
 

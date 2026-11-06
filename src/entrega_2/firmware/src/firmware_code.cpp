@@ -28,6 +28,9 @@
  *      notifica bola a bola (1/5 a 5/5) para animar o anel/barra no App.
  *   3. MODO_TREINO: Treino dinâmico com quantidade e intervalo configuráveis (mín. 3s).
  *      Detecta acertos físicos e detecta ERROS por timeout caso passe o tempo sem impacto.
+ *   4. MODO_PAUSADO: Alcançável apenas a partir do MODO_TREINO (comando PAUSAR).
+ *      Preserva bola atual e contadores, congela a janela de lance e ignora
+ *      qualquer impacto. RETOMAR volta ao MODO_TREINO com a janela inteira.
  * ============================================================================
  */
 
@@ -66,11 +69,19 @@ float calibDificuldade     = 0.0;  // Dificuldade dinâmica configurada pela cal
 
 // Estados da Máquina Física do Tobias
 enum EstadoFisico { REPOUSO_PRONTO, CAPTURANDO_PICO, TOCANDO_AUDIO, ESPERANDO_ESTABILIZAR };
-EstadoFisico estadoFisico = REPOUSO_PRONTO;
+volatile EstadoFisico estadoFisico = REPOUSO_PRONTO; // escrito também pela task do BLE (iniciarTreino/iniciarCalibracao)
 
 // Modos de Operação do Sistema
-enum ModoOperacao { MODO_AGUARDANDO, MODO_CALIBRACAO, MODO_TREINO };
-ModoOperacao modoAtual = MODO_AGUARDANDO; // Inicia em STANDBY silencioso
+enum ModoOperacao { MODO_AGUARDANDO, MODO_CALIBRACAO, MODO_TREINO, MODO_PAUSADO };
+volatile ModoOperacao modoAtual = MODO_AGUARDANDO; // Inicia em STANDBY silencioso
+
+// Pedidos de pausa/retomada vindos do BLE. O callback roda em outra task do
+// FreeRTOS; mexer no modo direto de lá deixaria o loop() terminar a iteração
+// corrente e registrar um timeout ou uma batida DEPOIS do "PAUSADO" notificado.
+// Por isso o callback só marca o pedido, e o loop() o aplica no início da
+// próxima iteração, que é um ponto seguro.
+volatile bool pedidoPausar = false;
+volatile bool pedidoRetomar = false;
 
 // Vetor de Referência da Gravidade (calibração automática da verticalidade no setup)
 float refX = 0, refY = 0, refZ = 1.0;
@@ -112,6 +123,8 @@ void iniciarCalibracao(int total);
 void iniciarTreino(int total, unsigned long intervaloMs, float calib = 0.0);
 void registrarErroTimeout();
 void finalizarSessao();
+void aplicarPausa();
+void aplicarRetomada();
 
 // --- IMPLEMENTAÇÃO DE ÁUDIO DFPLAYER MINI ---
 
@@ -225,9 +238,20 @@ class MyRxCallbacks: public BLECharacteristicCallbacks {
       enviarBLE("{\"status\":\"CANCELADO\",\"modo\":\"AGUARDANDO\"}");
       Serial.println("🛑 Sessão cancelada. Tobias em STANDBY silencioso.");
     }
-    // 4. Ping / Status
+    // 4. Pausar / Retomar Treino (aplicados pelo loop(), ver pedidoPausar)
+    else if (comando == "PAUSAR") {
+      pedidoRetomar = false;
+      pedidoPausar = true;
+    }
+    else if (comando == "RETOMAR") {
+      pedidoPausar = false;
+      pedidoRetomar = true;
+    }
+    // 5. Ping / Status
     else if (comando == "PING") {
-      String mStr = (modoAtual == MODO_CALIBRACAO) ? "CALIBRACAO" : (modoAtual == MODO_TREINO) ? "TREINO" : "AGUARDANDO";
+      String mStr = (modoAtual == MODO_CALIBRACAO) ? "CALIBRACAO" :
+                    (modoAtual == MODO_TREINO)     ? "TREINO" :
+                    (modoAtual == MODO_PAUSADO)    ? "PAUSADO" : "AGUARDANDO";
       enviarBLE("{\"status\":\"PONG\",\"modo\":\"" + mStr + "\",\"bola_atual\":" + String(bolaAtual) + "}");
     }
   }
@@ -243,6 +267,9 @@ void iniciarCalibracao(int total) {
   maiorAngulo = 0;
   calibDificuldade = 0.0; // Na calibração sempre usa os limiares base
   tempoInicioSessao = millis();
+  // Mesmo motivo do iniciarTreino: sem isso, um boneco ainda inclinado gera uma
+  // batida fantasma que consome uma das bolas e encerra a calibração antes da hora.
+  estadoFisico = ESPERANDO_ESTABILIZAR;
 
   digitalWrite(PIN_LED_VERDE, HIGH); delay(200); digitalWrite(PIN_LED_VERDE, LOW);
   tocarFaixaMP3(1); // Som curto de sinalização
@@ -262,6 +289,10 @@ void iniciarTreino(int total, unsigned long intervaloMs, float calib) {
   maiorAngulo = 0;
   tempoInicioSessao = millis();
   tempoInicioJanelaLance = millis();
+  pedidoPausar = pedidoRetomar = false; // descarta pedido velho da sessão anterior
+  // Não assume que o boneco está em pé: se a sessão anterior terminou com ele
+  // inclinado, REPOUSO_PRONTO faria a primeira leitura virar batida fantasma.
+  estadoFisico = ESPERANDO_ESTABILIZAR;
 
   Serial.printf("🎯 Treino Iniciado: %d lances | Intervalo: %lu ms | Dificuldade: +%.1f°\n", 
                 totalBolasSessao, intervaloLanceMs, calibDificuldade);
@@ -281,6 +312,8 @@ void iniciarTreino(int total, unsigned long intervaloMs, float calib) {
 void registrarErroTimeout() {
   bolaAtual++;
   contErros++;
+  // t_ms conta desde tempoInicioSessao e INCLUI o tempo pausado. É proposital:
+  // o app calcula o próprio ts_ms e ignora este campo. Não "corrigir".
   unsigned long tMs = (tempoInicioSessao > 0) ? (millis() - tempoInicioSessao) : millis();
   String idLance = "L-" + String(millis()) + "-" + String(bolaAtual);
 
@@ -331,6 +364,49 @@ void finalizarSessao() {
   totalBolasSessao = 0;
   digitalWrite(PIN_LED_VERDE, LOW);
   Serial.println("🔒 Sessão finalizada. Tobias retornou ao STANDBY silencioso.");
+}
+
+// --- PAUSA / RETOMADA (chamadas só pelo loop()) ---
+
+void aplicarPausa() {
+  if (modoAtual != MODO_TREINO) {
+    Serial.println("⚠️ PAUSAR ignorado: só é possível pausar durante um TREINO.");
+    return;
+  }
+  // Último lance já registrado, só falta o áudio acabar: a sessão encerra sozinha
+  // em < 1,8 s. Pausar aqui deixaria o retomar sem o finalizarSessao() do
+  // TOCANDO_AUDIO, e o próximo timeout geraria um lance a mais que o pedido.
+  if (bolaAtual >= totalBolasSessao) {
+    Serial.println("⚠️ PAUSAR ignorado: último lance já registrado, sessão encerrando.");
+    return;
+  }
+
+  modoAtual = MODO_PAUSADO;
+  pararAudio();
+  setVolume(VOLUME_PADRAO); // desfaz um fade-out interrompido no meio
+  digitalWrite(PIN_LED_VERDE, LOW);
+
+  enviarBLE("{\"status\":\"PAUSADO\",\"bola_atual\":" + String(bolaAtual) +
+            ",\"total\":" + String(totalBolasSessao) + "}");
+  Serial.printf("⏸️ Treino PAUSADO no lance %d/%d.\n", bolaAtual, totalBolasSessao);
+}
+
+void aplicarRetomada() {
+  if (modoAtual != MODO_PAUSADO) {
+    Serial.println("⚠️ RETOMAR ignorado: o treino não está pausado.");
+    return;
+  }
+
+  // Janela inteira para o próximo lance; o tempo parado não conta.
+  tempoInicioJanelaLance = millis();
+  // Qualquer captura interrompida pela pausa é descartada, e só aceita impacto
+  // depois que o boneco voltar a ficar em pé.
+  estadoFisico = ESPERANDO_ESTABILIZAR;
+  modoAtual = MODO_TREINO;
+
+  enviarBLE("{\"status\":\"RETOMADO\",\"bola_atual\":" + String(bolaAtual) +
+            ",\"total\":" + String(totalBolasSessao) + "}");
+  Serial.printf("▶️ Treino RETOMADO no lance %d/%d.\n", bolaAtual + 1, totalBolasSessao);
 }
 
 // --- MPU-6050 ---
@@ -440,9 +516,20 @@ void setup() {
 // --- LOOP PRINCIPAL ---
 
 void loop() {
+  // Aplica pedidos de pausa/retomada aqui, entre iterações, nunca no meio de uma.
+  if (pedidoPausar) {
+    pedidoPausar = false;
+    aplicarPausa();
+  }
+  if (pedidoRetomar) {
+    pedidoRetomar = false;
+    aplicarRetomada();
+  }
+
   // REGRA DE OURO: SE NÃO ESTIVER EM TREINO NEM CALIBRAÇÃO, FICA 100% SILENCIOSO!
   // Nenhuma batida, balanço ou toque emite som ou acende LED no modo de espera.
-  if (modoAtual == MODO_AGUARDANDO) {
+  // Pausado segue a mesma regra: não lê o sensor, não conta timeout, não registra batida.
+  if (modoAtual == MODO_AGUARDANDO || modoAtual == MODO_PAUSADO) {
     delay(40);
     return;
   }
@@ -512,6 +599,7 @@ void loop() {
         tocarFaixaMP3(somTocar);
         digitalWrite(PIN_LED_VERDE, HIGH);
 
+        // t_ms inclui o tempo pausado de propósito: o app usa o próprio ts_ms (ver registrarErroTimeout).
         unsigned long tMs = (tempoInicioSessao > 0) ? (millis() - tempoInicioSessao) : millis();
         bolaAtual++;
         contAcertos++;

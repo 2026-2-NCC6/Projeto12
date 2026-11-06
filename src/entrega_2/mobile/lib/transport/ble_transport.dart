@@ -55,6 +55,7 @@ class BleTransport implements DeviceTransport {
   StreamSubscription<BluetoothConnectionState>? _connSub;
 
   final _eventController = StreamController<ImpactEvent>.broadcast();
+  final _estadoController = StreamController<StatusTobias>.broadcast();
   final StringBuffer _buffer = StringBuffer();
 
   bool _isConnected = false;
@@ -65,6 +66,9 @@ class BleTransport implements DeviceTransport {
 
   @override
   Stream<ImpactEvent> get events => _eventController.stream;
+
+  @override
+  Stream<StatusTobias> get estados => _estadoController.stream;
 
   bool get isConnected => _isConnected;
   BluetoothDevice? get device => _device;
@@ -264,16 +268,29 @@ class BleTransport implements DeviceTransport {
     }
   }
 
+  /// Uma linha JSON do firmware, como se tivesse chegado pelo BLE.
+  @visibleForTesting
+  void interpretarLinha(String linha) => _interpretarJson(linha);
+
   /// Interpreta mensagens JSON do firmware Tobias
   void _interpretarJson(String jsonString) {
     try {
       final map = jsonDecode(jsonString);
       if (map is! Map<String, dynamic>) return;
 
-      // Resumo final de treino concluído
-      if (map['status'] == 'TREINO_CONCLUIDO') {
-        ultimoResumoTreino = map;
-        developer.log('Treino concluído no Tobias: $map', name: 'BleTransport');
+      // Mensagem de status: nunca é lance. Status que o app não conhece
+      // (CONECTADO, PONG, CANCELADO, CALIB_INICIADA...) só vai para o log.
+      if (map.containsKey('status')) {
+        final status = map['status'];
+        if (status == 'TREINO_CONCLUIDO') {
+          ultimoResumoTreino = map;
+          developer.log('Treino concluído no Tobias: $map', name: 'BleTransport');
+        } else if (statusTobiasDe(status) case final estado?) {
+          debugPrint('[BLE] Tobias confirmou: $status');
+          _estadoController.add(estado);
+        } else {
+          developer.log('Status ignorado do Tobias: $status', name: 'BleTransport');
+        }
         return;
       }
 
@@ -367,6 +384,7 @@ class BleTransport implements DeviceTransport {
   void dispose() {
     disconnect();
     _eventController.close();
+    _estadoController.close();
   }
 }
 

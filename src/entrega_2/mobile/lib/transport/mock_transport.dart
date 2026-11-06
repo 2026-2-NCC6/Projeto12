@@ -21,6 +21,14 @@ class MockTransport implements DeviceTransport {
   /// Picos enviados em sequência (repetem quando acabam).
   final List<double> picos;
 
+  final _estados = StreamController<StatusTobias>.broadcast();
+
+  /// Como o firmware: pausado, nenhuma batida é registrada.
+  var _pausado = false;
+
+  @override
+  Stream<StatusTobias> get estados => _estados.stream;
+
   /// Cada escuta recebe a sequência desde o começo. Cancelar a escuta para o
   /// timer, sem deixar nada pendente.
   @override
@@ -30,6 +38,7 @@ class MockTransport implements DeviceTransport {
     late final StreamController<ImpactEvent> controller;
     void agendar() {
       timer = Timer(n == 0 ? primeira : seguintes, () {
+        if (_pausado) return agendar();
         controller.add(
           ImpactEvent(
             aPkG: picos[n % picos.length],
@@ -66,6 +75,21 @@ class MockTransport implements DeviceTransport {
       calibracao: calibracao,
     );
     debugPrint('[Simulador] comando (não enviado): ${payload.trim()}');
+    // Confirma como o firmware confirmaria; pausar só vale com sessão rodando.
+    switch (cmd) {
+      case DeviceCommand.pausar when !_pausado:
+        _pausado = true;
+        _estados.add(StatusTobias.pausado);
+      case DeviceCommand.retomar when _pausado:
+        _pausado = false;
+        _estados.add(StatusTobias.retomado);
+      case DeviceCommand.iniciarSessao ||
+          DeviceCommand.iniciarCalibracao ||
+          DeviceCommand.finalizar:
+        _pausado = false;
+      default:
+        break;
+    }
   }
 
   @override
