@@ -22,8 +22,9 @@ abstract final class DeviceState {
     simulador.value = (t is MockTransport);
   }
 
-  /// `a_ref` = mediana dos picos das 5 batidas de calibração, em g / graus.
-  static final refG = ValueNotifier<double>(Mock.deviceRefG);
+  /// `a_ref` = mediana dos picos das 5 batidas de calibração, em GRAUS de
+  /// inclinação (o firmware mede ângulo, não g). Só em memória.
+  static final refAngulo = ValueNotifier<double>(Mock.deviceRefAngulo);
 
   /// Nível de calibração / acréscimo de dificuldade em graus (enviado ao ESP32 a cada treino).
   /// 0.0 = Padrão fácil (jogador normal/fraco).

@@ -35,6 +35,13 @@ const tetoBase = 580;
 /// ([faixaDoAcerto]).
 const limiarMedioBase = 380;
 
+/// A dificuldade (graus somados aos limiares) que a calibração produz a
+/// partir da mediana das 5 batidas: `clamp(mediana − 38, 0, 20)`, com 1 casa
+/// (a precisão que a API aceita). Mediana de 38° ou menos dá 0, um resultado
+/// legítimo (não "não calibrado").
+double dificuldadeDaCalibracao(double mediana) =>
+    double.parse((mediana - 38.0).clamp(0.0, 20.0).toStringAsFixed(1));
+
 const _escala = 1000;
 const bonusKo = 75;
 const penalidadeErro = -20;

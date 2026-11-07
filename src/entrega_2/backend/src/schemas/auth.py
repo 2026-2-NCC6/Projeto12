@@ -1,9 +1,14 @@
+from datetime import date, datetime
 from decimal import Decimal
-from datetime import date
+from typing import Annotated
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from src.models.usuario import Perfil
+
+# A mesma regra no cadastro e na edicao: um apelido valido num lugar e
+# recusado no outro seria um bug esperando para acontecer.
+Apelido = Annotated[str, Field(min_length=2, max_length=40)]
 
 
 class CadastroEntrada(BaseModel):
@@ -12,7 +17,7 @@ class CadastroEntrada(BaseModel):
     email: EmailStr
     senha: str = Field(min_length=8, max_length=72)
     nome: str = Field(min_length=3, max_length=120)
-    apelido: str = Field(min_length=2, max_length=40)
+    apelido: Apelido
     data_nascimento: date
     perfil: Perfil = Perfil.casual
 
@@ -40,8 +45,31 @@ class UsuarioSaida(BaseModel):
     perfil: Perfil
     papel: str
     calibracao: float = 0.0
+    # Nulo = nunca calibrou. E isto, e nao `calibracao == 0`, que diz se a
+    # pessoa precisa passar pela calibracao (0 e um resultado legitimo).
+    calibrado_em: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class EdicaoPerfilEntrada(BaseModel):
+    """PATCH /v1/auth/eu: so o apelido.
+
+    Nome e e-mail nao sao editaveis (o e-mail e a identidade de login, e
+    muda-lo exigiria verificacao). Campo a mais e 422, e nao ignorado em
+    silencio: quem mandar `email` precisa saber que nada mudou.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    apelido: Apelido
+
+
+class ExclusaoContaEntrada(BaseModel):
+    """DELETE /v1/auth/eu exige a senha: o token dura dias e nao pode ser
+    revogado, entao uma operacao destrutiva pede reautenticacao."""
+
+    senha: str
 
 
 class CalibracaoEntrada(BaseModel):

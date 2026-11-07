@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/api_client.dart';
+import '../../data/auth_store.dart';
 import '../../router.dart';
 import '../../state/device_state.dart';
 import '../../transport/ble_transport.dart';
@@ -41,9 +43,13 @@ class PareamentoScreen extends StatefulWidget {
   const PareamentoScreen({
     super.key,
     this.estadoInicial = EstadoPareamento.busca,
+    this.lerUsuario,
   });
 
   final EstadoPareamento estadoInicial;
+
+  /// Nos testes: o usuário "guardado". Padrão: [AuthStore.lerUsuario].
+  final Future<UsuarioApi?> Function()? lerUsuario;
 
   @override
   State<PareamentoScreen> createState() => _PareamentoScreenState();
@@ -66,9 +72,22 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
   StreamSubscription<List<TobiasEncontrado>>? _encontradosSub;
   StreamSubscription<bool>? _buscandoSub;
 
+  /// Quem está logado, para saber se já calibrou (`calibrado_em`).
+  UsuarioApi? _usuario;
+
+  /// Calibra uma vez só: com `calibrado_em` preenchido, conectar leva direto
+  /// a treinar, e recalibrar fica no Perfil. Sem usuário guardado (login de
+  /// uma versão anterior), calibra, como antes. NUNCA decida pelo valor da
+  /// calibração: 0 é resultado legítimo de quem bate com mediana de 38° ou
+  /// menos, e essa pessoa seria mandada para a calibração para sempre.
+  bool get _precisaCalibrar => _usuario?.precisaCalibrar ?? true;
+
   @override
   void initState() {
     super.initState();
+    (widget.lerUsuario ?? AuthStore.lerUsuario)().then((u) {
+      if (mounted) setState(() => _usuario = u);
+    });
     _encontradosSub = _ble.encontrados.listen((lista) {
       if (mounted) setState(() => _doScan = lista);
     });
@@ -356,7 +375,9 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
     const _Radar(compact: true, icon: AppIcons.bluetoothConnected),
     ..._titulo(
       'Bluetooth conectado',
-      'A conexão com o ${_ble.deviceName} foi realizada. Falta calibrar o sensor para medir seus lances.',
+      _precisaCalibrar
+          ? 'A conexão com o ${_ble.deviceName} foi realizada. Falta calibrar o sensor para medir seus lances.'
+          : 'A conexão com o ${_ble.deviceName} foi realizada. Você já calibrou: é só treinar. Para recalibrar, use o Perfil.',
     ),
     _DeviceItem(
       nome: _ble.deviceName,
@@ -372,12 +393,21 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
       (_Passo.feito, 'Canal de comunicação com o boneco pronto'),
     ]),
     const Spacer(),
-    AppButton(
-      'Continuar para a calibração',
-      icon: AppIcons.chevronRight,
-      iconAfter: true,
-      onPressed: _calibrar,
-    ),
+    if (_precisaCalibrar)
+      AppButton(
+        'Continuar para a calibração',
+        icon: AppIcons.chevronRight,
+        iconAfter: true,
+        onPressed: _calibrar,
+      )
+    else
+      // O mesmo destino de quem acaba de calibrar (CalibracaoScreen).
+      AppButton(
+        'Começar a treinar',
+        icon: AppIcons.chevronRight,
+        iconAfter: true,
+        onPressed: () => context.go(Routes.treinos),
+      ),
   ];
 
   // ------------------------------------------------------------ 2.4 Falha

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/format.dart';
 import '../../data/api_client.dart';
 import '../../data/auth_store.dart';
+import '../../data/pontuacao.dart';
 import '../../router.dart';
 import '../../state/device_state.dart';
 import '../../theme/app_colors.dart';
@@ -77,23 +78,39 @@ class _CalibracaoScreenState extends State<CalibracaoScreen> {
     _sub = null;
     setState(() => _fase = _Fase.calculando);
     _timer = Timer(_espera, () {
-      DeviceState.refG.value = _mediana;
+      DeviceState.refAngulo.value = _mediana;
       // Dificuldade: se o jogador teve impactos fortes (mediana > 38°), calcula acréscimo.
       // Se for fraco/normal (<= 38°), dificuldade = 0.0 (padrão fácil inalterado).
-      final dificuldade = (_mediana > 38.0)
-          ? double.parse(((_mediana - 38.0).clamp(0.0, 20.0)).toStringAsFixed(1))
-          : 0.0;
+      final dificuldade = dificuldadeDaCalibracao(_mediana);
       DeviceState.calibracao.value = dificuldade;
       AuthStore.salvarCalibracao(dificuldade);
 
-      // Persiste no backend caso o usuário esteja autenticado
-      AuthStore.lerToken().then((token) {
-        if (token != null) {
-          ApiClient().atualizarCalibracao(token, dificuldade).catchError((_) => null);
-        }
-      });
+      // Persiste no backend caso o usuário esteja autenticado, e guarda o
+      // `calibrado_em` no aparelho: é ele que diz ao pareamento que não
+      // precisa calibrar de novo (o valor 0 não serve para isso).
+      _gravarCalibracao(dificuldade);
       setState(() => _fase = _Fase.concluida);
     });
+  }
+
+  /// Envia ao servidor e atualiza o usuário guardado. Sem rede, marca só no
+  /// aparelho (agora): este celular não pede de novo, e o servidor fica sem
+  /// a marca até a próxima calibração com rede.
+  static Future<void> _gravarCalibracao(double dificuldade) async {
+    final token = await AuthStore.lerToken();
+    if (token == null) return;
+    final guardado = await AuthStore.lerUsuario();
+    try {
+      await AuthStore.salvarUsuario(
+        await ApiClient().atualizarCalibracao(token, dificuldade),
+      );
+    } on ApiException {
+      if (guardado != null) {
+        await AuthStore.salvarUsuario(
+          guardado.copyWith(calibracao: dificuldade, calibradoEm: DateTime.now().toUtc()),
+        );
+      }
+    }
   }
 
   /// "Recomeçar" e "Recalibrar": volta ao 0/5.
@@ -123,20 +140,22 @@ class _CalibracaoScreenState extends State<CalibracaoScreen> {
   Widget build(BuildContext context) {
     final n = _batidas.length;
     final concluida = _fase == _Fase.concluida;
-    final ref = n == 0 ? '—' : '${fmtDec(_mediana)} g';
+    // Grau de inclinação do boneco, que é o que o firmware mede (os valores
+    // reais ficam entre ~22° e 70°). O "g" do Figma era da versão antiga.
+    final ref = n == 0 ? '—' : '${fmtDec(_mediana)}°';
 
     final (titulo, subtitulo) = switch (_fase) {
       _Fase.coletando => (
         'Dê 5 batidas de referência',
-        'Bata no TOBIAS com a força normal do seu jogo. Usamos a mediana das batidas como sua referência.',
+        'Bata no TOBIAS como no seu jogo normal. O sensor mede quanto o boneco inclina a cada batida; a mediana das 5 é a sua referência.',
       ),
       _Fase.calculando => (
         'Calculando a mediana…',
-        'Recebemos as 5 batidas. Aguarde um instante enquanto definimos a sua referência de força.',
+        'Recebemos as 5 batidas. Aguarde um instante enquanto definimos a sua referência de inclinação.',
       ),
       _Fase.concluida => (
         'Calibração concluída',
-        'Sua referência de força é $ref, a mediana das 5 batidas. Já pode treinar.',
+        'Sua referência é $ref de inclinação, a mediana das 5 batidas. Já pode treinar.',
       ),
     };
 
@@ -173,7 +192,7 @@ class _CalibracaoScreenState extends State<CalibracaoScreen> {
             gap: 10,
             children: [
               Text(
-                'Força de cada batida',
+                'Inclinação de cada batida',
                 style: AppText.labelM.c(AppColors.textSecondary),
               ),
               _Barras(batidas: _batidas, total: _total, duracao: _anim),
@@ -342,7 +361,7 @@ class _Anel extends StatelessWidget {
 }
 
 /// 5 barras (largura 44) alinhadas na base. Pendente: tracejada de 24 com
-/// "—"; feita: sobe até a altura da força e fica sólida `bg/brand`.
+/// "—"; feita: sobe até a altura da inclinação e fica sólida `bg/brand`.
 class _Barras extends StatelessWidget {
   const _Barras({
     required this.batidas,
@@ -356,9 +375,10 @@ class _Barras extends StatelessWidget {
 
   static const _alturaMax = 76.0;
 
-  /// Altura proporcional à força: 8,4 g → 58, 8,9 g → 69, 9,2 g → 76.
-  static double _altura(double g) =>
-      (58 + (g - 8.4) * 22.5).clamp(28.0, _alturaMax);
+  /// Altura proporcional à inclinação, na faixa real do firmware: 22° (o
+  /// gatilho, abaixo disso não é batida) → 28, 70° → 76.
+  static double _altura(double graus) =>
+      (28 + (graus - 22) * (_alturaMax - 28) / (70 - 22)).clamp(28.0, _alturaMax);
 
   @override
   Widget build(BuildContext context) {
@@ -392,7 +412,7 @@ class _Barras extends StatelessWidget {
             switchOutCurve: Curves.easeIn,
             transitionBuilder: _subirComFade,
             child: Text(
-              feita ? '${fmtDec(valor)} g' : '—',
+              feita ? '${fmtDec(valor)}°' : '—',
               key: ValueKey(valor),
               maxLines: 1,
               style: AppText.labelM.c(

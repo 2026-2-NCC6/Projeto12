@@ -108,8 +108,11 @@ class _SessaoSelecaoScreenState extends State<SessaoSelecaoScreen> {
                   : s.conectado
                   ? '${s.nome} conectado'
                   : '${s.nome} desconectado',
+              // A dificuldade (do servidor, no login) é o que vai ao firmware.
+              // A referência da calibração só existe em memória e volta ao
+              // valor do simulador a cada abertura do app: não é mostrada.
               subtitle:
-                  'Calibrado · ref. ${fmtDec(DeviceState.refG.value)} g'
+                  '${DeviceState.calibracao.value > 0 ? 'Dificuldade +${fmtDec(DeviceState.calibracao.value)}°' : 'Dificuldade padrão'}'
                   '${s == null ? '' : ' · bateria ${s.bateria}%'}',
               badge: s?.conectado == true ? 'Pronto' : '—',
             );

@@ -1,5 +1,6 @@
 import enum
 from datetime import date, datetime
+from typing import Optional
 
 from sqlalchemy import Date, DateTime, Enum, Float, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -36,6 +37,11 @@ class Usuario(Base):
     calibracao: Mapped[float] = mapped_column(
         Float, default=0.0, server_default="0.0"
     )
+    # Quando a calibracao foi feita; nulo = nunca calibrou. O valor da
+    # calibracao NAO serve de marca: a formula e clamp(mediana - 38, 0, 20),
+    # entao quem bate com mediana de 38 graus ou menos calibra de verdade e
+    # recebe 0, igual a quem nunca calibrou.
+    calibrado_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

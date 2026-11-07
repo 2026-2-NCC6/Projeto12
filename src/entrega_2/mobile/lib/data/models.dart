@@ -140,15 +140,3 @@ class RankEntry {
   /// Letra do avatar (por padrão, a inicial do apelido).
   String get inicial => _inicial ?? apelido[0].toUpperCase();
 }
-
-class UserProfile {
-  const UserProfile({
-    required this.nome,
-    required this.apelido,
-    required this.email,
-  });
-
-  final String nome;
-  final String apelido;
-  final String email;
-}

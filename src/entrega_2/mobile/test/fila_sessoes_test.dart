@@ -373,8 +373,12 @@ void main() {
       'falha',
       // Local, da etapa 7 (nome do treino para o histórico).
       'treino_titulo',
+      // Local: o dono da sessão no aparelho (não vai no envio).
+      'usuario_id',
       'lances',
     });
+    final envio = (await gravador.fila.todas()).single.paraEnvio();
+    expect(envio.containsKey('usuario_id'), isFalse);
     expect((s['lances'] as List).first.keys.toSet(), {
       'uuid_lance',
       'id_lance_firmware',

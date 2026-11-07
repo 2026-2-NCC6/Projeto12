@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
+import '../data/auth_store.dart';
 import '../data/fila_sessoes.dart';
 import '../transport/device_transport.dart';
 import 'sessao_ativa.dart';
@@ -35,7 +36,9 @@ class GravadorSessao {
     DateTime Function()? agora,
     Stopwatch? relogio,
     this.esperaConfirmacao = const Duration(milliseconds: 1500),
-  }) : _uuid = uuid ?? const Uuid(),
+    Future<int?> Function()? usuarioAtual,
+  }) : _usuarioAtual = usuarioAtual ?? AuthStore.lerIdUsuario,
+       _uuid = uuid ?? const Uuid(),
        _agora = agora ?? DateTime.now,
        _relogio = relogio ?? Stopwatch();
 
@@ -44,6 +47,9 @@ class GravadorSessao {
   final DeviceTransport transport;
   final Uuid _uuid;
   final DateTime Function() _agora;
+
+  /// Id de quem está logado: vira o dono da sessão na fila.
+  final Future<int?> Function() _usuarioAtual;
 
   /// Quanto [pausar] e [retomar] esperam a confirmação do Tobias.
   final Duration esperaConfirmacao;
@@ -90,6 +96,9 @@ class GravadorSessao {
         dificuldade: sessao.dificuldade,
         iniciadaEm: isoComFuso(_agora()),
         treinoTitulo: sessao.titulo,
+        // O dono é fixado AGORA, na criação: se a pessoa sair da conta antes
+        // de sincronizar, a sessão continua sendo dela, e não de quem entrar.
+        usuarioId: await _usuarioAtual(),
       ),
     );
     _relogio.start();

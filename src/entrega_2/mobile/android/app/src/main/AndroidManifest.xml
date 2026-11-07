@@ -52,9 +52,5 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- Foto de perfil: encontrar o app de câmera (image_picker). -->
-        <intent>
-            <action android:name="android.media.action.IMAGE_CAPTURE"/>
-        </intent>
     </queries>
 </manifest>

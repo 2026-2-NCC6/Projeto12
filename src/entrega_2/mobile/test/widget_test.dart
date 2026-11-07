@@ -1,18 +1,13 @@
-import 'dart:convert';
-
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smart_tennis_arena_mobile/app.dart';
 import 'package:smart_tennis_arena_mobile/data/fila_sessoes.dart';
 import 'package:smart_tennis_arena_mobile/router.dart';
 import 'package:smart_tennis_arena_mobile/state/app_settings.dart';
-import 'package:smart_tennis_arena_mobile/state/profile_state.dart';
 import 'package:smart_tennis_arena_mobile/widgets/buttons.dart';
-import 'package:smart_tennis_arena_mobile/widgets/layout.dart';
 
 /// Todas as rotas do app. Os estados da Calibração, o diálogo de exclusão
 /// e o Novo treino · Personalizado são testados nos fluxos.
@@ -115,7 +110,7 @@ Finder _contador(int n) => find.byKey(ValueKey(n));
 Future<void> _calibrar(WidgetTester tester) async {
   expect(find.text('Dê 5 batidas de referência'), findsOneWidget);
   expect(_contador(0), findsOneWidget);
-  const medianas = ['8,4 g', '8,7 g', '8,9 g', '8,8 g'];
+  const medianas = ['25,0°', '33,5°', '42,0°', '38,0°'];
   for (var n = 1; n <= 4; n++) {
     await _esperar(tester, _contador(n));
     expect(
@@ -129,40 +124,9 @@ Future<void> _calibrar(WidgetTester tester) async {
   expect(find.text('Recomeçar'), findsNothing);
   await _esperar(tester, find.text('Calibração concluída'));
   await tester.pump(const Duration(milliseconds: 700));
-  expect(find.text('Referência final (mediana): 8,9 g'), findsOneWidget);
+  expect(find.text('Referência final (mediana): 42,0°'), findsOneWidget);
   expect(tester.takeException(), isNull);
 }
-
-/// PNG 1×1 (foto de perfil falsa).
-final _png = base64Decode(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGOQjZT+DwACuQGRxBpnmwAAAABJRU5ErkJggg==',
-);
-
-/// Câmera e galeria falsas: devolve [resposta] e guarda a origem pedida.
-class _FakePicker extends ImagePicker {
-  _FakePicker(this.resposta);
-
-  final Future<XFile?> Function() resposta;
-  final origens = <ImageSource>[];
-
-  @override
-  Future<XFile?> pickImage({
-    required ImageSource source,
-    double? maxWidth,
-    double? maxHeight,
-    int? imageQuality,
-    CameraDevice preferredCameraDevice = CameraDevice.rear,
-    bool requestFullMetadata = true,
-  }) {
-    origens.add(source);
-    return resposta();
-  }
-}
-
-/// O avatar de [tamanho] tem foto?
-bool _avatarComFoto(WidgetTester tester, double tamanho) => tester
-    .widgetList<Avatar>(find.byType(Avatar))
-    .any((a) => a.size == tamanho && a.image != null);
 
 void main() {
   setUpAll(_carregarRoboto);
@@ -258,9 +222,10 @@ void main() {
     await _fechar(tester);
   });
 
-  testWidgets('excluir conta pede confirmação e volta ao Login', (
-    tester,
-  ) async {
+  // A exclusão de verdade (senha certa, senha errada, limpeza da fila) é
+  // testada em perfil_test.dart, com uma API falsa. Aqui, dentro do app: o
+  // diálogo abre, cancela, e sem senha não exclui nem sai da tela.
+  testWidgets('excluir conta pede confirmação e a senha', (tester) async {
     _tamanhoTela(tester, const Size(390, 844));
     await _abrir(tester, Routes.perfil);
     await _tocar(tester, 'Configurações do perfil');
@@ -272,10 +237,12 @@ void main() {
 
     await _tocar(tester, 'Excluir minha conta');
     await _tocar(tester, 'Sim, excluir');
-    expect(find.text('Conta excluída'), findsOneWidget);
+    expect(find.text('Digite sua senha para confirmar.'), findsOneWidget);
+    expect(find.text('Excluir sua conta?'), findsOneWidget);
+    expect(find.text('Conta excluída'), findsNothing);
 
-    await _tocar(tester, 'Voltar ao início');
-    expect(find.text('TOBIAS'), findsOneWidget);
+    await _tocar(tester, 'Não, manter minha conta');
+    expect(find.text('Excluir sua conta?'), findsNothing);
     await _fechar(tester);
   });
 
@@ -411,66 +378,5 @@ void main() {
     expect(find.text('KO'), findsOneWidget);
     expect(find.text('Erros'), findsOneWidget);
     await _fechar(tester);
-  });
-
-  group('foto de perfil', () {
-    setUp(() => ProfileState.foto.value = null);
-    tearDown(() {
-      ProfileState.foto.value = null;
-      ProfileState.picker = ImagePicker();
-    });
-
-    testWidgets('galeria escolhe a foto e salvar leva ao Perfil', (
-      tester,
-    ) async {
-      _tamanhoTela(tester, const Size(390, 844));
-      final picker = _FakePicker(
-        () async => XFile.fromData(_png, mimeType: 'image/png'),
-      );
-      ProfileState.picker = picker;
-      await _abrir(tester, Routes.perfil);
-      await _tocar(tester, 'Configurações do perfil');
-      expect(_avatarComFoto(tester, 96), isFalse);
-
-      await _tocar(tester, 'Galeria');
-      expect(picker.origens, [ImageSource.gallery]);
-      expect(_avatarComFoto(tester, 96), isTrue);
-      // Ainda não salvou: o Perfil continua com a inicial.
-      expect(ProfileState.foto.value, isNull);
-
-      await _tocar(tester, 'Salvar alterações');
-      expect(find.text('Recalibrar o TOBIAS'), findsOneWidget);
-      expect(_avatarComFoto(tester, 64), isTrue);
-      expect(tester.takeException(), isNull);
-      await _fechar(tester);
-    });
-
-    testWidgets('tirar foto abre a câmera; cancelar mantém a inicial', (
-      tester,
-    ) async {
-      _tamanhoTela(tester, const Size(390, 844));
-      final picker = _FakePicker(() async => null);
-      ProfileState.picker = picker;
-      await _abrir(tester, Routes.perfilConfig);
-      await _tocar(tester, 'Tirar foto');
-      expect(picker.origens, [ImageSource.camera]);
-      expect(_avatarComFoto(tester, 96), isFalse);
-      await _fechar(tester);
-    });
-
-    testWidgets('câmera indisponível mostra aviso', (tester) async {
-      _tamanhoTela(tester, const Size(390, 844));
-      ProfileState.picker = _FakePicker(
-        () async => throw PlatformException(code: 'camera_access_denied'),
-      );
-      await _abrir(tester, Routes.perfilConfig);
-      await _tocar(tester, 'Tirar foto');
-      expect(
-        find.textContaining('Não foi possível abrir a câmera'),
-        findsOneWidget,
-      );
-      await tester.pump(const Duration(seconds: 5));
-      await _fechar(tester);
-    });
   });
 }

@@ -35,6 +35,10 @@ class UsuarioApi {
     required this.email,
     required this.papel,
     this.calibracao = 0.0,
+    this.nome = '',
+    this.apelido = '',
+    this.perfil,
+    this.calibradoEm,
   });
 
   factory UsuarioApi.fromJson(Map<String, dynamic> json) => UsuarioApi(
@@ -42,12 +46,55 @@ class UsuarioApi {
     email: json['email'] as String,
     papel: json['papel'] as String,
     calibracao: (json['calibracao'] as num?)?.toDouble() ?? 0.0,
+    nome: json['nome'] as String? ?? '',
+    apelido: json['apelido'] as String? ?? '',
+    perfil: json['perfil'] as String?,
+    calibradoEm: switch (json['calibrado_em']) {
+      final String s => DateTime.parse(s),
+      _ => null,
+    },
   );
+
+  /// O formato da API: serve também para guardar no aparelho.
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'email': email,
+    'papel': papel,
+    'calibracao': calibracao,
+    'nome': nome,
+    'apelido': apelido,
+    'perfil': perfil,
+    'calibrado_em': calibradoEm?.toUtc().toIso8601String(),
+  };
+
+  UsuarioApi copyWith({String? apelido, double? calibracao, DateTime? calibradoEm}) =>
+      UsuarioApi(
+        id: id,
+        email: email,
+        papel: papel,
+        calibracao: calibracao ?? this.calibracao,
+        nome: nome,
+        apelido: apelido ?? this.apelido,
+        perfil: perfil,
+        calibradoEm: calibradoEm ?? this.calibradoEm,
+      );
 
   final int id;
   final String email;
   final String papel;
   final double calibracao;
+  final String nome;
+  final String apelido;
+
+  /// "casual", "iniciante" ou "infantil".
+  final String? perfil;
+
+  /// Quando calibrou; NULO = nunca calibrou. É a única marca válida disso:
+  /// `calibracao == 0` é resultado legítimo de quem bate com mediana de 38°
+  /// ou menos, e não pode mandar essa pessoa de volta para a calibração.
+  final DateTime? calibradoEm;
+
+  bool get precisaCalibrar => calibradoEm == null;
 }
 
 /// Uma página da listagem de treinos (`GET /v1/drills`).
@@ -154,6 +201,30 @@ class ApiClient {
       ),
     );
     return UsuarioApi.fromJson(json);
+  }
+
+  /// PATCH /v1/auth/eu → troca o apelido (o único campo editável).
+  /// 409 = apelido de outra pessoa (o mesmo erro do cadastro).
+  Future<UsuarioApi> editarApelido(String token, String apelido) async {
+    final json = await _enviar(
+      () => _http.patch(
+        _uri('/v1/auth/eu'),
+        headers: _jsonComToken(token),
+        body: jsonEncode({'apelido': apelido}),
+      ),
+    );
+    return UsuarioApi.fromJson(json);
+  }
+
+  /// DELETE /v1/auth/eu → 204. Exige a [senha] no corpo (o token dura dias
+  /// e não pode ser revogado). 401 = senha errada, igual ao login.
+  Future<void> excluirConta(String token, String senha) async {
+    await _enviar(() async {
+      final req = http.Request('DELETE', _uri('/v1/auth/eu'))
+        ..headers.addAll(_jsonComToken(token))
+        ..body = jsonEncode({'senha': senha});
+      return http.Response.fromStream(await _http.send(req));
+    });
   }
 
   /// PUT /v1/auth/calibracao → atualiza o nível de calibração/dificuldade no backend.
@@ -313,6 +384,14 @@ class ApiClient {
     String token, {
     DateTime? de,
     DateTime? ate,
+  }) async => (await todasAsSessoes(token, de: de, ate: ate)).sessoes;
+
+  /// Como [listarSessoes], devolvendo também o `total` do envelope: é esse
+  /// o número de sessões, e não o tamanho da lista nem a conta de páginas.
+  Future<({List<SessaoApi> sessoes, int total})> todasAsSessoes(
+    String token, {
+    DateTime? de,
+    DateTime? ate,
   }) async {
     const pagina = 100;
     final sessoes = <SessaoApi>[];
@@ -333,7 +412,9 @@ class ApiClient {
       final itens = (json['items'] as List).cast<Map<String, dynamic>>();
       sessoes.addAll(itens.map(SessaoApi.fromJson));
       final total = json['total'] as int;
-      if (itens.isEmpty || sessoes.length >= total) return sessoes;
+      if (itens.isEmpty || sessoes.length >= total) {
+        return (sessoes: sessoes, total: total);
+      }
     }
   }
 

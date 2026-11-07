@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'auth_store.dart';
 import 'pontuacao.dart';
 
 /// Um lance como foi recebido, com o UUID gerado NA CHEGADA.
@@ -76,6 +77,7 @@ class SessaoLocal {
     this.pontuacaoServidor,
     this.falha,
     this.treinoTitulo,
+    this.usuarioId,
     List<LanceLocal>? lances,
   }) : lances = lances ?? [];
 
@@ -91,6 +93,9 @@ class SessaoLocal {
     falha: j['falha'] as String?,
     // Ausente nas filas gravadas antes da etapa 7.
     treinoTitulo: j['treino_titulo'] as String?,
+    // Ausente nas filas gravadas antes do dono por sessão: ver
+    // FilaSessoes._adotarSemDono.
+    usuarioId: j['usuario_id'] as int?,
     lances: [
       for (final l in (j['lances'] as List).cast<Map<String, dynamic>>())
         LanceLocal.fromJson(l),
@@ -117,6 +122,12 @@ class SessaoLocal {
   /// Nome do treino no início da sessão, para o histórico local. Só do
   /// aparelho: não vai no envio (o servidor tem a versão do treino).
   final String? treinoTitulo;
+
+  /// De quem é a sessão (id do usuário logado quando ela foi criada). Só do
+  /// aparelho: não vai no envio, o dono no servidor vem do token. Serve para
+  /// que, num celular compartilhado, uma sessão de A nunca suba com o token
+  /// de B nem apareça no histórico dele. Nulo = criada sem ninguém logado.
+  int? usuarioId;
 
   final List<LanceLocal> lances;
 
@@ -173,6 +184,7 @@ class SessaoLocal {
     'pontuacao_servidor': pontuacaoServidor,
     'falha': falha,
     'treino_titulo': treinoTitulo,
+    'usuario_id': usuarioId,
     'lances': [for (final l in lances) l.toJson()],
   };
 }
@@ -229,12 +241,22 @@ String isoComFuso(DateTime instante) => instante.toUtc().toIso8601String();
 /// Cada alteração regrava a fila inteira (poucos KB). As gravações passam
 /// por uma fila serial: dois lances chegando juntos não podem ler o mesmo
 /// estado e um apagar o outro.
+///
+/// Cada sessão tem dono ([SessaoLocal.usuarioId]). As leituras que chegam ao
+/// usuário (envio, histórico, pendentes, uma sessão pelo UUID) só enxergam as
+/// de quem está logado ([donoAtual]); as outras ficam guardadas, intactas,
+/// até o dono entrar de novo. Os limites também são por dono: as sessões de
+/// B não empurram para fora as pendentes de A.
 class FilaSessoes {
   FilaSessoes({
     this.limitePendentes = 20,
     this.limiteSincronizadas = 10,
     this.limiteSeparadas = 5,
-  });
+    Future<int?> Function()? donoAtual,
+  }) : _donoAtual = donoAtual ?? AuthStore.lerIdUsuario;
+
+  /// Id de quem está logado agora; nulo sem login.
+  final Future<int?> Function() _donoAtual;
 
   /// A fila do app. Uma instância só: a serialização das gravações vale
   /// dentro de uma instância, então duas instâncias concorrentes poderiam
@@ -309,32 +331,79 @@ class FilaSessoes {
     alteracoes.value++;
   }
 
-  /// Cópia das pendentes e sincronizadas, na ordem em que começaram. Não
-  /// inclui as separadas (ver [separadas]).
+  /// Apaga a fila inteira (pendentes, sincronizadas e separadas), no disco e
+  /// na memória. Para a exclusão de conta: sem isto, o próximo cadastro
+  /// neste aparelho herdaria as sessões pendentes da conta apagada e
+  /// tentaria enviá-las. Passa pela fila serial, como qualquer gravação.
+  Future<void> apagarTudo() => _emSerie(() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(chave);
+    _sessoes = [];
+    _separadas = [];
+    alteracoes.value++;
+  });
+
+  /// Sessões gravadas antes de existir o dono por sessão não têm
+  /// `usuario_id`. Na primeira leitura com alguém logado, passam a ser dessa
+  /// pessoa, e o dono é gravado. Escolha deliberada (em vez de descartar):
+  /// numa fila antiga, quem está logado é quase sempre quem treinou, e
+  /// descartar perderia treino pendente de verdade.
+  ///
+  /// Devolve o dono atual (nulo sem login: aí nada é adotado, e só as
+  /// sessões sem dono ficam visíveis).
+  Future<int?> _adotarSemDono() async {
+    final dono = await _donoAtual();
+    final sessoes = await _carregar();
+    if (dono == null) return null;
+    final orfas = [
+      for (final s in [...sessoes, ..._separadas])
+        if (s.usuarioId == null) s,
+    ];
+    if (orfas.isEmpty) return dono;
+    for (final s in orfas) {
+      s.usuarioId = dono;
+    }
+    debugPrint(
+      '[FilaSessoes] ${orfas.length} sessão(ões) sem dono, de antes do campo, '
+      'adotada(s) pelo usuário $dono',
+    );
+    await _gravar();
+    return dono;
+  }
+
+  /// Cópia das pendentes e sincronizadas DE TODOS OS DONOS, na ordem em que
+  /// começaram. Não inclui as separadas. Para diagnóstico e testes: telas e
+  /// envio usam as leituras filtradas abaixo.
   Future<List<SessaoLocal>> todas() =>
       _emSerie(() async => List.of(await _carregar()));
 
-  /// As que aguardam envio: ainda não sincronizadas (as separadas não
-  /// entram, estão fora do envio).
-  Future<List<SessaoLocal>> aguardandoEnvio() => _emSerie(
-    () async => [
+  /// As de quem está logado que aguardam envio: ainda não sincronizadas (as
+  /// separadas não entram, estão fora do envio).
+  Future<List<SessaoLocal>> aguardandoEnvio() => _emSerie(() async {
+    final dono = await _adotarSemDono();
+    return [
       for (final s in await _carregar())
-        if (!s.sincronizada) s,
-    ],
-  );
-
-  /// As separadas por erro permanente, da mais antiga para a mais nova.
-  Future<List<SessaoLocal>> separadas() => _emSerie(() async {
-    await _carregar();
-    return List.of(_separadas);
+        if (s.usuarioId == dono && !s.sincronizada) s,
+    ];
   });
 
-  /// O histórico local: todas as sessões guardadas que têm lances
-  /// (pendentes, sincronizadas e separadas), da mais recente para a mais
-  /// antiga por `iniciada_em`. Sessão sem lance não é treino.
+  /// As separadas por erro permanente de quem está logado, da mais antiga
+  /// para a mais nova.
+  Future<List<SessaoLocal>> separadas() => _emSerie(() async {
+    final dono = await _adotarSemDono();
+    return [
+      for (final s in _separadas)
+        if (s.usuarioId == dono) s,
+    ];
+  });
+
+  /// O histórico local de quem está logado: as sessões guardadas que têm
+  /// lances (pendentes, sincronizadas e separadas), da mais recente para a
+  /// mais antiga por `iniciada_em`. Sessão sem lance não é treino.
   Future<List<SessaoLocal>> historico() => _emSerie(() async {
+    final dono = await _adotarSemDono();
     final todas = [...await _carregar(), ..._separadas]
-      ..removeWhere((s) => s.lances.isEmpty)
+      ..removeWhere((s) => s.usuarioId != dono || s.lances.isEmpty)
       ..sort(
         (a, b) => DateTime.parse(b.iniciadaEm)
             .compareTo(DateTime.parse(a.iniciadaEm)),
@@ -342,14 +411,17 @@ class FilaSessoes {
     return todas;
   });
 
-  /// Monta, num instante só, o corpo de cada sessão aguardando envio.
-  Future<List<EnvioPreparado>> prepararEnvio() => _emSerie(
-    () async => [
+  /// Monta, num instante só, o corpo de cada sessão de quem está logado
+  /// aguardando envio. As de outro dono NUNCA entram: subiriam com o token
+  /// de quem está logado, e o servidor as gravaria como dele.
+  Future<List<EnvioPreparado>> prepararEnvio() => _emSerie(() async {
+    final dono = await _adotarSemDono();
+    return [
       for (final s in await _carregar())
-        if (!s.sincronizada)
+        if (s.usuarioId == dono && !s.sincronizada)
           EnvioPreparado(s.uuidSessao, s._versao, s.paraEnvio()),
-    ],
-  );
+    ];
+  });
 
   /// Aplica a resposta da API, sessão a sessão. Devolve as respostas das
   /// sessões removidas por terem sido rejeitadas (com o `motivo`).
@@ -390,8 +462,12 @@ class FilaSessoes {
     if (i < 0) return;
     final s = sessoes.removeAt(i)..falha = motivo;
     _separadas.add(s);
-    while (_separadas.length > limiteSeparadas) {
-      final antiga = _separadas.removeAt(0);
+    // Limite por dono: as separadas de outra pessoa não contam.
+    while (true) {
+      final doDono = _separadas.where((x) => x.usuarioId == s.usuarioId).toList();
+      if (doDono.length <= limiteSeparadas) break;
+      final antiga = doDono.first;
+      _separadas.remove(antiga);
       debugPrint(
         '[FilaSessoes] limite de $limiteSeparadas separadas: descartada a '
         'sessão ${antiga.uuidSessao} (${antiga.falha}, iniciada em '
@@ -402,10 +478,12 @@ class FilaSessoes {
   });
 
   /// A sessão com esse UUID (inclusive separada), ou nulo se não estiver
-  /// (mais) na fila.
+  /// (mais) na fila ou for de outro dono (um link direto não abre a sessão
+  /// de outra pessoa).
   Future<SessaoLocal?> sessao(String uuidSessao) => _emSerie(() async {
+    final dono = await _adotarSemDono();
     for (final s in [...await _carregar(), ..._separadas]) {
-      if (s.uuidSessao == uuidSessao) return s;
+      if (s.uuidSessao == uuidSessao) return s.usuarioId == dono ? s : null;
     }
     return null;
   });
@@ -414,7 +492,7 @@ class FilaSessoes {
   Future<void> abrir(SessaoLocal sessao) => _emSerie(() async {
     final sessoes = await _carregar();
     sessoes.add(sessao);
-    _aplicarLimite(sessoes, preservar: sessao.uuidSessao);
+    _aplicarLimite(sessoes, preservar: sessao);
     await _gravar();
   });
 
@@ -452,11 +530,17 @@ class FilaSessoes {
     );
   }
 
-  void _aplicarLimite(List<SessaoLocal> sessoes, {required String preservar}) {
+  /// Limite de pendentes POR DONO, contado entre as do dono da sessão nova:
+  /// quem treina muito não descarta as pendentes de outra pessoa.
+  void _aplicarLimite(List<SessaoLocal> sessoes, {required SessaoLocal preservar}) {
     while (true) {
-      final pendentes = sessoes.where((s) => !s.sincronizada).toList();
+      final pendentes = sessoes
+          .where((s) => !s.sincronizada && s.usuarioId == preservar.usuarioId)
+          .toList();
       if (pendentes.length <= limitePendentes) return;
-      final maisAntiga = pendentes.firstWhere((s) => s.uuidSessao != preservar);
+      final maisAntiga = pendentes.firstWhere(
+        (s) => s.uuidSessao != preservar.uuidSessao,
+      );
       sessoes.remove(maisAntiga);
       debugPrint(
         '[FilaSessoes] limite de $limitePendentes pendentes: descartada a '
@@ -467,15 +551,19 @@ class FilaSessoes {
   }
 
   /// Guarda só as [limiteSincronizadas] sincronizadas mais recentes (pela
-  /// data de início), como histórico local.
+  /// data de início) DE CADA DONO, como histórico local.
   void _aplicarRetencao(List<SessaoLocal> sessoes) {
-    final sincronizadas = sessoes.where((s) => s.sincronizada).toList()
-      ..sort(
-        (a, b) => DateTime.parse(b.iniciadaEm)
-            .compareTo(DateTime.parse(a.iniciadaEm)),
-      );
-    for (final antiga in sincronizadas.skip(limiteSincronizadas)) {
-      sessoes.remove(antiga);
+    for (final dono in {for (final s in sessoes) s.usuarioId}) {
+      final sincronizadas = sessoes
+          .where((s) => s.sincronizada && s.usuarioId == dono)
+          .toList()
+        ..sort(
+          (a, b) => DateTime.parse(b.iniciadaEm)
+              .compareTo(DateTime.parse(a.iniciadaEm)),
+        );
+      for (final antiga in sincronizadas.skip(limiteSincronizadas)) {
+        sessoes.remove(antiga);
+      }
     }
   }
 }

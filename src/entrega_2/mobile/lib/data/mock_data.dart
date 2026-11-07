@@ -5,22 +5,14 @@ library;
 import 'models.dart';
 
 abstract final class Mock {
-  // ---------------------------------------------------------------- Usuária
-  static const user = UserProfile(
-    nome: 'Maria Silva',
-    apelido: 'MariaSaque',
-    email: 'maria@email.com',
-  );
-  static const senha = 'tobias2026'; // exibida como ••••••••••
-
   // ------------------------------------------------------------ Dispositivo
   static const deviceName = 'TOBIAS-01';
-  static const deviceRefG = 8.9;
+  /// Mediana de [calibracaoBatidas], em graus.
+  static const deviceRefAngulo = 42.0;
   static const deviceBateria = 82;
 
   /// Bateria informada na tela "Bluetooth conectado" (2.3).
   static const deviceBateriaAoConectar = 87;
-  static const deviceCalibradoEm = '19 set';
 
   // ---------------------------------------------------------------- Treinos
   static const reacaoRapida = Drill(
@@ -113,12 +105,15 @@ abstract final class Mock {
   ];
 
   // -------------------------------------------------------------- Calibração
-  /// Picos das 5 batidas de referência que o simulador envia, em g
-  /// (mediana = 8,9 g).
-  static const calibracaoBatidas = [8.4, 8.9, 9.2, 8.7, 9.0];
-
-  // ------------------------------------------------------------------ Perfil
-  static const perfilSessoes = 24;
-  static const perfilRecorde = 2146;
-  static const perfilSequenciaDias = 5;
+  /// Picos das 5 batidas que o simulador envia, em GRAUS de inclinação, de
+  /// 25° a 70°, como a realidade (sessão medida no protótipo: média 42,8°,
+  /// máximo 66,6°). Também viram o ângulo dos lances das sessões simuladas,
+  /// que precisam cobrir as TRÊS faixas.
+  ///
+  /// Mediana 42,0° → dificuldade +4,0° (mediana − 38) → médio a partir de
+  /// 42°, KO a partir de 62°: 25 e 34 fracos, 42 e 52 médios, 70 KO. Com a
+  /// faixa antiga (36° a 52°, dificuldade +6,0°) o teto ia a 64° e nenhuma
+  /// sessão simulada tinha KO. Medianas parciais exatas (25; 33,5; 42; 38;
+  /// 42) para os testes não dependerem de arredondamento.
+  static const calibracaoBatidas = [25.0, 42.0, 70.0, 34.0, 52.0];
 }

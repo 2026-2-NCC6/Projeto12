@@ -70,6 +70,9 @@ class _LoginScreenState extends State<LoginScreen> {
       await AuthStore.salvarToken(token);
       await AuthStore.salvarPapel(usuario.papel);
       await AuthStore.salvarCalibracao(usuario.calibracao);
+      // Identidade para o Perfil sem rede, e `calibrado_em` para o
+      // pareamento saber se ainda falta calibrar.
+      await AuthStore.salvarUsuario(usuario);
       DeviceState.calibracao.value = usuario.calibracao;
       // Gatilho de envio: com o token novo, sobe o que ficou na fila
       // (inclusive o que parou num 401 de token expirado).

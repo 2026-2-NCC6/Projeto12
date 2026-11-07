@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image_picker/image_picker.dart';
 
-import '../../data/mock_data.dart';
+import '../../data/api_client.dart';
+import '../../data/auth_store.dart';
+import '../../data/auth_validacao.dart';
+import '../../data/fila_sessoes.dart';
 import '../../router.dart';
-import '../../state/profile_state.dart';
+import '../../state/conta_local.dart';
 import '../../theme/app_colors.dart';
 import '../../theme/app_icons.dart';
 import '../../theme/app_text.dart';
@@ -16,131 +17,126 @@ import '../../widgets/layout.dart';
 
 /// 6.5 Perfil · Configurações do perfil (69:2209).
 ///
-/// "Tirar foto" abre a câmera e "Galeria" abre o seletor de fotos do
-/// Android. A foto escolhida aparece no avatar na hora e só vale para o
-/// perfil depois de "Salvar alterações".
+/// O apelido é o único dado editável (`PATCH /v1/auth/eu`). A foto de perfil
+/// ficou fora do escopo: sem botões que não levam a nada.
 class ConfigPerfilScreen extends StatefulWidget {
-  const ConfigPerfilScreen({super.key});
+  const ConfigPerfilScreen({
+    super.key,
+    this.api,
+    this.lerToken,
+    this.lerUsuario,
+    this.fila,
+  });
+
+  /// Nos testes: API falsa, token, usuário guardado e fila isolada.
+  final ApiClient? api;
+  final Future<String?> Function()? lerToken;
+  final Future<UsuarioApi?> Function()? lerUsuario;
+  final FilaSessoes? fila;
 
   @override
   State<ConfigPerfilScreen> createState() => _ConfigPerfilScreenState();
 }
 
 class _ConfigPerfilScreenState extends State<ConfigPerfilScreen> {
-  var _foto = ProfileState.foto.value;
+  late final ApiClient _api = widget.api ?? ApiClient();
+  final _apelido = TextEditingController();
+  UsuarioApi? _usuario;
+  String? _erroApelido;
+  var _salvando = false;
 
-  Future<void> _escolherFoto(ImageSource origem) async {
+  @override
+  void initState() {
+    super.initState();
+    (widget.lerUsuario ?? AuthStore.lerUsuario)().then((u) {
+      if (!mounted || u == null) return;
+      setState(() => _usuario = u);
+      _apelido.text = u.apelido;
+    });
+  }
+
+  @override
+  void dispose() {
+    _apelido.dispose();
+    super.dispose();
+  }
+
+  Future<String?> _token() => (widget.lerToken ?? AuthStore.lerToken)();
+
+  Future<void> _salvar() async {
+    if (_salvando) return;
+    final novo = _apelido.text.trim();
+    final invalido = validarApelido(novo);
+    if (invalido != null) {
+      setState(() => _erroApelido = invalido);
+      return;
+    }
+    if (novo == _usuario?.apelido) {
+      goBack(context, Routes.perfil);
+      return;
+    }
+    final token = await _token();
+    if (token == null) {
+      setState(() => _erroApelido = 'Entre na sua conta de novo para alterar o apelido.');
+      return;
+    }
+    setState(() {
+      _salvando = true;
+      _erroApelido = null;
+    });
     try {
-      final arquivo = await ProfileState.picker.pickImage(
-        source: origem,
-        // Avatar pequeno: limita o tamanho para não pesar na memória.
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
-        preferredCameraDevice: CameraDevice.front,
-      );
-      if (arquivo == null) return; // Cancelou.
-      final bytes = await arquivo.readAsBytes();
-      if (mounted) setState(() => _foto = bytes);
-    } on PlatformException {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            origem == ImageSource.camera
-                ? 'Não foi possível abrir a câmera. Verifique a permissão nas configurações do celular.'
-                : 'Não foi possível abrir a galeria.',
-          ),
-        ),
-      );
+      final atualizado = await _api.editarApelido(token, novo);
+      await AuthStore.salvarUsuario(atualizado);
+      if (mounted) goBack(context, Routes.perfil);
+    } on ApiException catch (e) {
+      // Apelido em uso (409) e qualquer outra falha: no campo, não num alerta.
+      if (mounted) {
+        setState(() {
+          _erroApelido = e.statusCode == 409
+              ? 'Esse apelido já está em uso. Escolha outro.'
+              : e.mensagem;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _salvando = false);
     }
   }
 
-  void _salvar() {
-    ProfileState.foto.value = _foto;
-    goBack(context, Routes.perfil);
+  Future<void> _excluir() async {
+    final excluida = await showConfirmarExclusao(
+      context,
+      excluir: (senha) async {
+        final token = await _token();
+        if (token == null) {
+          throw const ApiException('Entre na sua conta de novo para excluir.');
+        }
+        await _api.excluirConta(token, senha);
+        await esquecerContaNoAparelho(fila: widget.fila);
+      },
+    );
+    if (excluida == true && mounted) context.go(Routes.contaExcluida);
   }
 
   @override
   Widget build(BuildContext context) {
-    void voltar() => goBack(context, Routes.perfil);
-    const u = Mock.user;
     return StackedScreen(
       title: 'Configurações do perfil',
-      onBack: voltar,
+      onBack: () => goBack(context, Routes.perfil),
       children: [
-        SectionCard(
-          title: 'Foto de perfil',
-          gap: 14,
-          children: [
-            Center(
-              child: SizedBox.square(
-                dimension: 96,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Avatar(
-                      letter: u.nome[0],
-                      size: 96,
-                      style: AppText.displayLarge.c(AppColors.textOnBrand),
-                      image: _foto == null ? null : MemoryImage(_foto!),
-                    ),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: AppColors.bgAccent,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.bgSurface,
-                            width: 2,
-                          ),
-                        ),
-                        child: const Icon(
-                          AppIcons.camera,
-                          size: 16,
-                          color: AppColors.iconOnAccent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            Row(
-              spacing: 10,
-              children: [
-                Expanded(
-                  child: AppButton.outline(
-                    'Tirar foto',
-                    icon: AppIcons.camera,
-                    compact: true,
-                    onPressed: () => _escolherFoto(ImageSource.camera),
-                  ),
-                ),
-                Expanded(
-                  child: AppButton.outline(
-                    'Galeria',
-                    icon: AppIcons.image,
-                    compact: true,
-                    onPressed: () => _escolherFoto(ImageSource.gallery),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
         SectionCard(
           title: 'Apelido no ranking',
           children: [
             AppField(
+              key: const ValueKey('campo-apelido'),
               label: 'Apelido',
-              initialValue: u.apelido,
+              controller: _apelido,
+              error: _erroApelido != null,
               helper:
+                  _erroApelido ??
                   'É o nome que aparece no ranking. Use um apelido, não seu nome real.',
+              onChanged: (_) {
+                if (_erroApelido != null) setState(() => _erroApelido = null);
+              },
             ),
           ],
         ),
@@ -156,72 +152,134 @@ class _ConfigPerfilScreenState extends State<ConfigPerfilScreen> {
             AppButton.danger(
               'Excluir minha conta',
               icon: AppIcons.trash,
-              onPressed: () => showConfirmarExclusao(context),
+              onPressed: _excluir,
             ),
           ],
         ),
         const Spacer(),
-        AppButton('Salvar alterações', onPressed: _salvar),
+        AppButton(
+          _salvando ? 'Salvando…' : 'Salvar alterações',
+          onPressed: _salvando ? null : _salvar,
+        ),
       ],
     );
   }
 }
 
-/// 6.6 Perfil · Confirmar exclusão (73:2347).
-Future<void> showConfirmarExclusao(BuildContext context) {
-  return showDialog<void>(
+/// 6.6 Perfil · Confirmar exclusão (73:2347), com o campo de senha que o
+/// endpoint exige. Devolve `true` se a conta foi excluída.
+///
+/// [excluir] chama a API e limpa o aparelho; um [ApiException] dele vira a
+/// mensagem do diálogo (senha errada, sem rede), que fica aberto.
+Future<bool?> showConfirmarExclusao(
+  BuildContext context, {
+  required Future<void> Function(String senha) excluir,
+}) {
+  return showDialog<bool>(
     context: context,
     barrierColor: AppColors.overlay,
-    builder: (dialogContext) => Dialog(
+    builder: (_) => _DialogoExclusao(excluir: excluir),
+  );
+}
+
+class _DialogoExclusao extends StatefulWidget {
+  const _DialogoExclusao({required this.excluir});
+
+  final Future<void> Function(String senha) excluir;
+
+  @override
+  State<_DialogoExclusao> createState() => _DialogoExclusaoState();
+}
+
+class _DialogoExclusaoState extends State<_DialogoExclusao> {
+  final _senha = TextEditingController();
+  String? _erro;
+  var _enviando = false;
+
+  @override
+  void dispose() {
+    _senha.dispose();
+    super.dispose();
+  }
+
+  Future<void> _confirmar() async {
+    if (_enviando) return;
+    final senha = _senha.text;
+    if (senha.isEmpty) {
+      // Sem senha, nem chama a API.
+      setState(() => _erro = 'Digite sua senha para confirmar.');
+      return;
+    }
+    setState(() {
+      _enviando = true;
+      _erro = null;
+    });
+    try {
+      await widget.excluir(senha);
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() {
+          _erro = e.statusCode == 401 ? 'Senha incorreta.' : e.mensagem;
+          _enviando = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
       backgroundColor: AppColors.bgSurface,
       surfaceTintColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppRadius.r28),
-      ),
-      child: Padding(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.r28)),
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           spacing: 12,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: const BoxDecoration(
-                color: AppColors.bgErrorSoft,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                AppIcons.alertOctagon,
-                size: 32,
-                color: AppColors.iconError,
+            Center(
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: const BoxDecoration(
+                  color: AppColors.bgErrorSoft,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(AppIcons.alertOctagon, size: 32, color: AppColors.iconError),
               ),
             ),
-            Text(
-              'Excluir sua conta?',
-              textAlign: TextAlign.center,
-              style: AppText.headlineM,
-            ),
+            Text('Excluir sua conta?', textAlign: TextAlign.center, style: AppText.headlineM),
             Text(
               'Todo o seu histórico, suas pontuações e as sessões salvas serão apagados para sempre. Você não poderá recuperar nada depois.',
               textAlign: TextAlign.center,
               style: AppText.bodyM.c(AppColors.textSecondary),
             ),
+            AppField(
+              key: const ValueKey('campo-senha-exclusao'),
+              label: 'Sua senha, para confirmar',
+              controller: _senha,
+              obscure: true,
+              error: _erro != null,
+              helper: _erro,
+              onChanged: (_) {
+                if (_erro != null) setState(() => _erro = null);
+              },
+            ),
             AppButton(
               'Não, manter minha conta',
-              onPressed: () => Navigator.of(dialogContext).pop(),
+              onPressed: _enviando ? null : () => Navigator.of(context).pop(false),
             ),
             AppButton.danger(
-              'Sim, excluir',
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                context.go(Routes.contaExcluida);
-              },
+              _enviando ? 'Excluindo…' : 'Sim, excluir',
+              onPressed: _enviando ? null : _confirmar,
             ),
           ],
         ),
       ),
-    ),
-  );
+    );
+  }
 }

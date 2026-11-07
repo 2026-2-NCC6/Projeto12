@@ -114,6 +114,89 @@
             "HTTPBearer": []
           }
         ]
+      },
+      "delete": {
+        "tags": [
+          "autenticacao"
+        ],
+        "summary": "Excluir Conta",
+        "description": "Exclui a conta de quem esta com o token. Definitivo, nao logico.\n\nExige a senha: o token dura dias e nao pode ser revogado. Senha errada\nda o mesmo 401 do login.\n\nNUNCA falha por dependencia: so por senha errada ou falta de token. A\npessoa nao pode ficar impedida de sair por algo que outro usuario fez.\n\nUma regra so:\n- treino de que OUTRA pessoa depende (de catalogo, ou pessoal com sessao\n  de outro usuario) perde o dono (owner_id nulo) e permanece, com as\n  versoes: apaga-lo quebraria o historico de terceiros;\n- todo o resto da pessoa e apagado: sessoes, lances, treinos pessoais\n  sem dependencia externa e suas versoes, e o usuario;\n- log_auditoria fica, com usuario_id anulado (o registro do que\n  aconteceu sobrevive; o vinculo com a pessoa, nao).\nCopias de treinos dela feitas por outros continuam, so sem origem_id.\n\nTudo numa transacao: ou apaga tudo, ou nada.",
+        "operationId": "excluir_conta_v1_auth_eu_delete",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExclusaoContaEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "autenticacao"
+        ],
+        "summary": "Editar Perfil",
+        "description": "Troca o apelido de quem esta com o token (o unico campo editavel).\n\nApelido de outra pessoa da o MESMO 409 do cadastro, para o app tratar\nos dois do mesmo jeito.",
+        "operationId": "editar_perfil_v1_auth_eu_patch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EdicaoPerfilEntrada"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UsuarioSaida"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/v1/auth/calibracao": {
@@ -122,7 +205,7 @@
           "autenticacao"
         ],
         "summary": "Atualizar Calibracao",
-        "description": "Atualiza o nivel de calibracao / dificuldade fisica do jogador.",
+        "description": "Atualiza o nivel de calibracao / dificuldade fisica do jogador.\n\nMarca `calibrado_em` a cada chamada, inclusive com calibracao 0: e um\nresultado legitimo (mediana de 38 graus ou menos), e sem a marca o app\nmandaria essa pessoa de volta para a calibracao toda vez.",
         "operationId": "atualizar_calibracao_v1_auth_calibracao_put",
         "requestBody": {
           "content": {
@@ -917,6 +1000,23 @@
         ],
         "title": "ClasseImpacto"
       },
+      "EdicaoPerfilEntrada": {
+        "properties": {
+          "apelido": {
+            "type": "string",
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Apelido"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "apelido"
+        ],
+        "title": "EdicaoPerfilEntrada",
+        "description": "PATCH /v1/auth/eu: so o apelido.\n\nNome e e-mail nao sao editaveis (o e-mail e a identidade de login, e\nmuda-lo exigiria verificacao). Campo a mais e 422, e nao ignorado em\nsilencio: quem mandar `email` precisa saber que nada mudou."
+      },
       "Escopo": {
         "type": "string",
         "enum": [
@@ -924,6 +1024,20 @@
           "pessoal"
         ],
         "title": "Escopo"
+      },
+      "ExclusaoContaEntrada": {
+        "properties": {
+          "senha": {
+            "type": "string",
+            "title": "Senha"
+          }
+        },
+        "type": "object",
+        "required": [
+          "senha"
+        ],
+        "title": "ExclusaoContaEntrada",
+        "description": "DELETE /v1/auth/eu exige a senha: o token dura dias e nao pode ser\nrevogado, entao uma operacao destrutiva pede reautenticacao."
       },
       "HTTPValidationError": {
         "properties": {
@@ -1682,6 +1796,18 @@
             "type": "number",
             "title": "Calibracao",
             "default": 0.0
+          },
+          "calibrado_em": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calibrado Em"
           }
         },
         "type": "object",
