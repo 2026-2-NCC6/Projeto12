@@ -43,6 +43,7 @@ Pasta obrigatória na raiz: `/mp3/`
 * `0002.mp3`: Golpe Médio
 * `0003.mp3`: Golpe Forte
 * `0004.mp3`: Golpe K.O. (Perfeito)
+* `0500.mp3`: Áudio de Introdução do Treino (5s)
 
 ---
 

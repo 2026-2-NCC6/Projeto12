@@ -10,7 +10,6 @@ import '../../theme/app_icons.dart';
 import '../../theme/app_text.dart';
 import '../../theme/app_tokens.dart';
 import '../../widgets/buttons.dart';
-import '../../widgets/cards.dart';
 import '../../widgets/controls.dart';
 import '../../widgets/field.dart';
 import '../../widgets/layout.dart';
@@ -108,7 +107,9 @@ class _EditarTreinoScreenState extends State<EditarTreinoScreen> {
         _drill = drill;
         _admin = admin;
         _lances = drill.lances;
-        _intervalo = (drill.intervaloExatoMs / 1000).round();
+        _intervalo = (drill.intervaloExatoMs / 1000)
+            .round()
+            .clamp(ParamTreino.intervaloMin, ParamTreino.intervaloMax);
         _falas = drill.falasTobias ?? true;
         _nome.text = drill.tipo == DrillType.catalogo
             ? '${drill.titulo} (minha)'
@@ -335,13 +336,6 @@ class _EditarTreinoScreenState extends State<EditarTreinoScreen> {
               }),
               erroLances: _erroLances,
               erroIntervalo: _erroIntervalo,
-            ),
-            ToggleRow(
-              icon: AppIcons.volume,
-              title: 'Falas do TOBIAS',
-              subtitle: 'Provocações e incentivos',
-              value: _falas,
-              onChanged: (v) => setState(() => _falas = v),
             ),
           ],
         ),

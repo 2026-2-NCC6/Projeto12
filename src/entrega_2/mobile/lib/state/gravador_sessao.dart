@@ -82,6 +82,9 @@ class GravadorSessao {
   /// "rodando" com o boneco pausado não teria como sair dali.
   final pausado = ValueNotifier<bool>(false);
 
+  /// Se a sessão foi concluída (pelo Tobias ou ao atingir a quantidade de lances).
+  final concluido = ValueNotifier<bool>(false);
+
   String get uuidSessao => _uuidSessao!;
   int get lancesRestantes =>
       sessao.lances - _bola < 0 ? 0 : sessao.lances - _bola;
@@ -108,6 +111,11 @@ class GravadorSessao {
     await _enviarTreino(DeviceCommand.iniciarSessao, sessao.lances);
   }
 
+  /// Zera a contagem do cronômetro interno (usado após o fim da contagem regressiva).
+  void zerarRelogio() {
+    _relogio.reset();
+  }
+
   void _aoLance(ImpactEvent e) {
     if (_encerrada) return;
     if (_bola >= sessao.lances) {
@@ -129,6 +137,10 @@ class GravadorSessao {
     _gravacoes = _gravacoes.then(
       (_) => fila.registrarLance(uuidSessao, lance).then((_) {
         lancesGravados.value = lancesGravados.value + 1;
+        if (_bola >= sessao.lances) {
+          _relogio.stop();
+          concluido.value = true;
+        }
       }),
     );
   }
@@ -142,6 +154,9 @@ class GravadorSessao {
       case StatusTobias.retomado:
         _relogio.start();
         pausado.value = false;
+      case StatusTobias.concluido:
+        _relogio.stop();
+        concluido.value = true;
     }
   }
 

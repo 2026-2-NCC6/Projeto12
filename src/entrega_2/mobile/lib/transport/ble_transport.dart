@@ -60,7 +60,7 @@ class BleTransport implements DeviceTransport {
 
   bool _isConnected = false;
   String _deviceName = 'TOBIAS';
-  int _bateria = 85;
+  final int _bateria = 85;
 
   Map<String, dynamic>? ultimoResumoTreino;
 
@@ -285,6 +285,7 @@ class BleTransport implements DeviceTransport {
         if (status == 'TREINO_CONCLUIDO') {
           ultimoResumoTreino = map;
           developer.log('Treino concluído no Tobias: $map', name: 'BleTransport');
+          _estadoController.add(StatusTobias.concluido);
         } else if (statusTobiasDe(status) case final estado?) {
           debugPrint('[BLE] Tobias confirmou: $status');
           _estadoController.add(estado);

@@ -52,6 +52,9 @@ enum StatusTobias {
 
   /// `{"status":"RETOMADO","bola_atual":N,"total":T}`
   retomado,
+
+  /// `{"status":"TREINO_CONCLUIDO","acertos":N,"erros":N}`
+  concluido,
 }
 
 /// O [StatusTobias] do campo `status` de um JSON do firmware, ou `null` se
@@ -59,6 +62,7 @@ enum StatusTobias {
 StatusTobias? statusTobiasDe(Object? status) => switch (status) {
   'PAUSADO' => StatusTobias.pausado,
   'RETOMADO' => StatusTobias.retomado,
+  'TREINO_CONCLUIDO' => StatusTobias.concluido,
   _ => null,
 };
 

@@ -299,7 +299,7 @@ void main() {
       );
 
       await tester.pumpWidget(
-        RepaintBoundary(
+        const RepaintBoundary(
           child: SmartTennisArenaApp(
             initialLocation: '${Routes.historicoDetalhe}?sessao=captura-detalhe',
           ),

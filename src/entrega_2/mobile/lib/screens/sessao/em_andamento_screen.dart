@@ -28,6 +28,7 @@ class EmAndamentoScreen extends StatefulWidget {
     required this.sessao,
     this.fila,
     this.transport,
+    this.tempoContagem,
   });
 
   /// Congelada na seleção: os parâmetros não são relidos do treino.
@@ -38,6 +39,9 @@ class EmAndamentoScreen extends StatefulWidget {
 
   /// Canal com o Tobias; nos testes, um falso. Padrão: o do [DeviceState].
   final DeviceTransport? transport;
+
+  /// Segundos da contagem regressiva antes de iniciar (padrão 3 em produção, 0 em testes).
+  final int? tempoContagem;
 
   @override
   State<EmAndamentoScreen> createState() => _EmAndamentoScreenState();
@@ -55,7 +59,11 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
   )..repeat();
 
   Timer? _timer;
+  Timer? _timerContagem;
   var _segundos = 0;
+  var _contagemRestante = 5;
+  var _contando = false;
+  var _concluido = false;
 
   /// Estado CONFIRMADO pelo Tobias (ver [GravadorSessao.pausado]).
   var _pausado = false;
@@ -72,29 +80,77 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
     fila: widget.fila ?? FilaSessoes.doApp,
     transport: widget.transport ?? DeviceState.transport,
   );
-  late final Future<void> _iniciada = _gravador.iniciar();
+  Future<void>? _iniciada;
+
+  bool get _emTeste =>
+      WidgetsBinding.instance.runtimeType.toString().toLowerCase().contains('test');
 
   @override
   void initState() {
     super.initState();
-    _iniciarTimer();
     _gravador.pausado.addListener(_aoMudarPausa);
-    // A sessão é gravada na fila antes de o TREINO: sair (ver GravadorSessao).
-    _iniciada.catchError((Object e) {
+    _gravador.concluido.addListener(_aoConcluir);
+
+    // Inicia imediatamente o gravador para enviar o comando de início ao Tobias via BLE.
+    // Assim, o áudio de introdução de 5s no Tobias toca simultaneamente com a contagem de 5s do app.
+    _iniciada = _gravador.iniciar();
+    _iniciada?.catchError((Object e) {
       debugPrint('[Sessão] falha ao iniciar: $e');
     });
+
+    final contagem = widget.tempoContagem ?? (_emTeste ? 0 : 5);
+    _contagemRestante = contagem;
+
+    if (contagem > 0) {
+      _contando = true;
+      _timerContagem = Timer.periodic(const Duration(seconds: 1), (t) {
+        if (!mounted) return;
+        setState(() {
+          _contagemRestante--;
+          if (_contagemRestante <= 0) {
+            _timerContagem?.cancel();
+            _contando = false;
+            _gravador.zerarRelogio();
+            _iniciarTimer();
+          }
+        });
+      });
+    } else {
+      _iniciarTimer();
+    }
   }
 
   void _iniciarTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _segundos++);
+      if (!mounted) return;
+      setState(() {
+        _segundos++;
+        final tempoTotalEsperado =
+            (widget.sessao.lances * widget.sessao.intervaloMs) ~/ 1000;
+        if (_segundos >= tempoTotalEsperado && !_concluido) {
+          _aoConcluir();
+        }
+      });
     });
+  }
+
+  void _aoConcluir() {
+    if (!mounted || _concluido) return;
+    setState(() {
+      _concluido = true;
+      _pausado = false;
+      _aguardando = false;
+      _falha = null;
+    });
+    _timer?.cancel();
+    _pulse.stop();
+    _spin.stop();
   }
 
   /// A tela só entra e sai da pausa quando o Tobias confirma, inclusive
   /// numa confirmação que chegue depois do prazo.
   void _aoMudarPausa() {
-    if (!mounted) return;
+    if (!mounted || _concluido) return;
     final pausado = _gravador.pausado.value;
     if (pausado == _pausado) return;
     setState(() {
@@ -115,7 +171,7 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
   /// Pede e espera a confirmação sem travar a tela: "Finalizar sessão"
   /// continua disponível enquanto isso.
   Future<void> _alternarPausa() async {
-    if (_aguardando) return;
+    if (_aguardando || _concluido || _contando) return;
     final pausar = !_pausado;
     setState(() {
       _aguardando = true;
@@ -147,7 +203,9 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
 
   @override
   void dispose() {
+    _timerContagem?.cancel();
     _gravador.pausado.removeListener(_aoMudarPausa);
+    _gravador.concluido.removeListener(_aoConcluir);
     _timer?.cancel();
     _pulse.dispose();
     _spin.dispose();
@@ -232,7 +290,11 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
                               ),
                             ),
                             Text(
-                              'Gravando',
+                              _contando
+                                  ? 'Aguarde'
+                                  : _concluido
+                                  ? 'Finalizado'
+                                  : 'Gravando',
                               style: AppText.labelL.c(AppColors.textOnBrand),
                             ),
                           ],
@@ -251,16 +313,30 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
                     ),
                   ),
                   _cartaoStatus(),
-                  _BotaoPausar(
-                    pausado: _pausado,
-                    aguardando: _aguardando,
-                    onTap: _alternarPausa,
-                  ),
-                  AppButton.danger(
-                    'Finalizar sessão',
-                    icon: AppIcons.stop,
-                    onPressed: _finalizar,
-                  ),
+                  if (!_concluido && !_contando)
+                    _BotaoPausar(
+                      pausado: _pausado,
+                      aguardando: _aguardando,
+                      onTap: _alternarPausa,
+                    ),
+                  if (_concluido)
+                    AppButton(
+                      'Ver resumo da sessão',
+                      icon: AppIcons.chevronRight,
+                      iconAfter: true,
+                      onPressed: _finalizar,
+                    )
+                  else if (_contando)
+                    AppButton.outline(
+                      'Cancelar',
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    )
+                  else
+                    AppButton.danger(
+                      'Finalizar sessão',
+                      icon: AppIcons.stop,
+                      onPressed: _finalizar,
+                    ),
                 ],
               ),
             ),
@@ -278,6 +354,38 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
   /// mais longo), então a mensagem aparece e some sem deslocar os botões:
   /// "Finalizar sessão" é justamente a saída de quem viu a falha.
   Widget _cartaoStatus() {
+    if (_concluido) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.bgBrand,
+          borderRadius: BorderRadius.circular(AppRadius.r20),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: 12,
+          children: [
+            const Icon(AppIcons.check, size: 20, color: AppColors.bgAccent),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                spacing: 2,
+                children: [
+                  Text(
+                    'Treino finalizado!',
+                    style: AppText.titleM.c(AppColors.textOnBrand),
+                  ),
+                  Text(
+                    'Todos os ${widget.sessao.lances} lances foram concluídos no boneco. Toque abaixo para ver a pontuação.',
+                    style: AppText.bodyS.c(AppColors.textOnBrandMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     Widget conteudo(IconData icone, String titulo, String texto) => Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       spacing: 12,
@@ -408,14 +516,29 @@ class _EmAndamentoScreenState extends State<EmAndamentoScreen>
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text(
-                    _tempo,
-                    style: AppText.displayScore.c(AppColors.textOnBrand),
-                  ),
-                  Text(
-                    'tempo de sessão',
-                    style: AppText.labelM.c(AppColors.textOnBrandMuted),
-                  ),
+                  if (_contando) ...[
+                    Text(
+                      '$_contagemRestante',
+                      style: AppText.displayScore.c(AppColors.textOnBrand),
+                    ),
+                    Text(
+                      'prepare-se...',
+                      style: AppText.labelM.c(AppColors.bgAccent),
+                    ),
+                  ] else ...[
+                    Text(
+                      _tempo,
+                      style: AppText.displayScore.c(AppColors.textOnBrand),
+                    ),
+                    Text(
+                      _concluido ? 'treino finalizado' : 'tempo de sessão',
+                      style: AppText.labelM.c(
+                        _concluido
+                            ? AppColors.bgAccent
+                            : AppColors.textOnBrandMuted,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

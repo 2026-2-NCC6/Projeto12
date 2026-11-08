@@ -36,12 +36,24 @@ class _SessaoSelecaoScreenState extends State<SessaoSelecaoScreen> {
 
   /// Começa ligado quando se veio do "Simulador pronto" (2.5).
   var _simulador = DeviceState.simulador.value;
+  var _ehAdmin = false;
 
   late Future<DeviceStatus> _status = DeviceState.transport.status();
 
   @override
   void initState() {
     super.initState();
+    AuthStore.ehAdmin().then((admin) {
+      if (!mounted) return;
+      setState(() {
+        _ehAdmin = admin;
+        if (!admin) {
+          _simulador = false;
+          DeviceState.simulador.value = false;
+          _status = DeviceState.transport.status();
+        }
+      });
+    });
     _carregar();
   }
 
@@ -111,42 +123,43 @@ class _SessaoSelecaoScreenState extends State<SessaoSelecaoScreen> {
               // A dificuldade (do servidor, no login) é o que vai ao firmware.
               // A referência da calibração só existe em memória e volta ao
               // valor do simulador a cada abertura do app: não é mostrada.
-              subtitle:
-                  '${DeviceState.calibracao.value > 0 ? 'Dificuldade +${fmtDec(DeviceState.calibracao.value)}°' : 'Dificuldade padrão'}'
-                  '${s == null ? '' : ' · bateria ${s.bateria}%'}',
+              subtitle: DeviceState.calibracao.value > 0
+                  ? 'Dificuldade +${fmtDec(DeviceState.calibracao.value)}°'
+                  : 'Dificuldade padrão',
               badge: s?.conectado == true ? 'Pronto' : '—',
             );
           },
         ),
         Text('Escolha o treino', style: AppText.titleM),
         ..._lista(treinos),
-        Row(
-          spacing: 12,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Modo simulador', style: AppText.titleM),
-                  Text(
-                    'Eventos de teste. Não conta para o ranking.',
-                    style: AppText.bodyS.c(AppColors.textSecondary),
-                  ),
-                ],
+        if (_ehAdmin)
+          Row(
+            spacing: 12,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Modo simulador', style: AppText.titleM),
+                    Text(
+                      'Eventos de teste. Não conta para o ranking.',
+                      style: AppText.bodyS.c(AppColors.textSecondary),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            AppSwitch(
-              value: _simulador,
-              onChanged: (v) {
-                setState(() {
-                  _simulador = v;
-                  DeviceState.simulador.value = v;
-                  _status = DeviceState.transport.status();
-                });
-              },
-            ),
-          ],
-        ),
+              AppSwitch(
+                value: _simulador,
+                onChanged: (v) {
+                  setState(() {
+                    _simulador = v;
+                    DeviceState.simulador.value = v;
+                    _status = DeviceState.transport.status();
+                  });
+                },
+              ),
+            ],
+          ),
         const Spacer(),
         AppButton(
           'Iniciar sessão',

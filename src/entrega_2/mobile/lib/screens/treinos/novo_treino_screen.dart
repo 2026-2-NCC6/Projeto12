@@ -22,19 +22,22 @@ abstract final class ParamTreino {
   /// 0–50 lances (40% → 20, 50% → 25).
   static const lancesMax = 50;
 
-  /// 0–10 s (30% → 3 s, 40% → 4 s).
+  /// Intervalo: 3 s a 10 s.
+  static const intervaloMin = 3;
   static const intervaloMax = 10;
 
   /// Valores padrão de cada nível: (lances, intervalo em s).
   static const padrao = {
     Nivel.facil: (15, 4),
     Nivel.medio: (20, 3),
-    Nivel.dificil: (30, 2),
+    Nivel.dificil: (30, 3),
     Nivel.infantil: (10, 5),
   };
 
   static int lances(double f) => math.max(1, (f * lancesMax).round());
-  static int intervalo(double f) => math.max(1, (f * intervaloMax).round());
+  static int intervalo(double f) =>
+      (intervaloMin + (f * (intervaloMax - intervaloMin)).round())
+          .clamp(intervaloMin, intervaloMax);
 }
 
 /// Sliders "Quantidade de lances" e "Intervalo entre os lances" + linha
@@ -59,8 +62,10 @@ List<Widget> parametrosTreino({
   SliderRow(
     label: 'Intervalo entre os lances',
     valueText: '$intervaloS s',
-    fraction: intervaloS / ParamTreino.intervaloMax,
-    divisions: ParamTreino.intervaloMax,
+    fraction: ((intervaloS.clamp(ParamTreino.intervaloMin, ParamTreino.intervaloMax) -
+            ParamTreino.intervaloMin) /
+        (ParamTreino.intervaloMax - ParamTreino.intervaloMin)),
+    divisions: ParamTreino.intervaloMax - ParamTreino.intervaloMin,
     onChanged: (f) => onIntervalo(ParamTreino.intervalo(f)),
   ),
   if (erroIntervalo != null) _ErroParametro(erroIntervalo),
@@ -95,8 +100,8 @@ String? validarLances(int lances) => lances < 1 || lances > 200
     ? 'A quantidade de lances deve ficar entre 1 e 200.'
     : null;
 
-String? validarIntervaloMs(int ms) => ms < 500 || ms > 60000
-    ? 'O intervalo deve ficar entre 0,5 e 60 segundos.'
+String? validarIntervaloMs(int ms) => ms < 3000 || ms > 10000
+    ? 'O intervalo deve ficar entre 3 e 10 segundos.'
     : null;
 
 /// 3.4 Novo treino (20:363) e 3.6 Novo treino · Personalizado (101:5516).

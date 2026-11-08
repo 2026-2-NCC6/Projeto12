@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../data/detalhe_sessao.dart';
 import '../../data/fila_sessoes.dart';
 import '../../data/format.dart';
-import '../../data/models.dart';
 import '../../data/resumo_sessao.dart';
 import '../../router.dart';
 import '../../theme/app_colors.dart';

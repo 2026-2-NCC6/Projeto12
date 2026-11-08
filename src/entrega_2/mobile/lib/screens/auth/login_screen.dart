@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_client.dart';
-import '../../data/api_config.dart';
 import '../../data/auth_store.dart';
 import '../../data/auth_validacao.dart';
 import '../../data/sincronizador.dart';
@@ -83,45 +82,12 @@ class _LoginScreenState extends State<LoginScreen> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
-          _erroSenha = e.statusCode == null
-              ? '${e.mensagem}\n(Tentando conectar em: ${ApiConfig.baseUrl})'
-              : e.mensagem;
+          _erroSenha = e.mensagem;
           _credenciaisInvalidas = e.statusCode == 401;
         });
       }
     } finally {
       if (mounted) setState(() => _enviando = false);
-    }
-  }
-
-  Future<void> _alterarServidor(BuildContext context) async {
-    final c = TextEditingController(text: ApiConfig.baseUrl);
-    final novo = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Endereço do Servidor'),
-        content: TextField(
-          controller: c,
-          decoration: const InputDecoration(
-            hintText: 'https://…',
-            labelText: 'URL da API',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, c.text.trim()),
-            child: const Text('Salvar'),
-          ),
-        ],
-      ),
-    );
-    if (novo != null && novo.isNotEmpty) {
-      await ApiConfig.salvarUrl(novo);
-      if (mounted) setState(() {});
     }
   }
 
@@ -217,14 +183,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                           TextLink('Criar conta', onTap: criarConta),
                         ],
-                      ),
-                      InkWell(
-                        onTap: () => _alterarServidor(context),
-                        child: Text(
-                          'Servidor: ${ApiConfig.baseUrl} (toque para alterar)',
-                          textAlign: TextAlign.center,
-                          style: AppText.bodyS.c(AppColors.textSecondary),
-                        ),
                       ),
                       Text(
                         'Ao continuar, você concorda com os Termos de Uso e a Política de Privacidade (LGPD).',

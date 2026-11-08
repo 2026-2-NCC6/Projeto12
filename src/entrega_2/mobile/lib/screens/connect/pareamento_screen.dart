@@ -74,6 +74,7 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
 
   /// Quem está logado, para saber se já calibrou (`calibrado_em`).
   UsuarioApi? _usuario;
+  var _ehAdmin = false;
 
   /// Calibra uma vez só: com `calibrado_em` preenchido, conectar leva direto
   /// a treinar, e recalibrar fica no Perfil. Sem usuário guardado (login de
@@ -85,6 +86,9 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
   @override
   void initState() {
     super.initState();
+    AuthStore.ehAdmin().then((admin) {
+      if (mounted) setState(() => _ehAdmin = admin);
+    });
     (widget.lerUsuario ?? AuthStore.lerUsuario)().then((u) {
       if (mounted) setState(() => _usuario = u);
     });
@@ -339,10 +343,11 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
         ),
       if (problema == null && selecionado != null && !_buscando)
         AppButton.text('Procurar novamente', onPressed: _buscar),
-      AppButton.text(
-        'Usar simulador (sem calibração)',
-        onPressed: () => _ir(EstadoPareamento.simulador),
-      ),
+      if (_ehAdmin)
+        AppButton.text(
+          'Usar simulador (sem calibração)',
+          onPressed: () => _ir(EstadoPareamento.simulador),
+        ),
     ];
   }
 
@@ -435,10 +440,11 @@ class _PareamentoScreenState extends State<PareamentoScreen> {
       icon: AppIcons.refreshCw,
       onPressed: () => _ir(EstadoPareamento.conectando),
     ),
-    AppButton.text(
-      'Usar simulador (sem calibração)',
-      onPressed: () => _ir(EstadoPareamento.simulador),
-    ),
+    if (_ehAdmin)
+      AppButton.text(
+        'Usar simulador (sem calibração)',
+        onPressed: () => _ir(EstadoPareamento.simulador),
+      ),
   ];
 
   // -------------------------------------------------------- 2.5 Simulador
