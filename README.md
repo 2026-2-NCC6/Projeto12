@@ -15,7 +15,9 @@
 ## 🎾 TOBIAS - O Boneco Interativo
 
 O **TOBIAS** é um boneco joão-bobo instrumentado que transforma o treino de tênis em jogo. Um sensor inercial dentro do alvo detecta cada bolada, classifica a intensidade do impacto e dispara na hora uma reação sonora — tudo em menos de um décimo de segundo, sem depender de internet.
+
 Um aplicativo mobile conduz a sessão: conecta-se ao alvo por Bluetooth, exibe a pontuação em tempo real e guarda os lances localmente, sincronizando depois com a nuvem, onde ficam o histórico de evolução do jogador e o catálogo de treinos publicados pelos treinadores.
+
 A proposta é dar a quem está começando o retorno objetivo que hoje só existe com um professor ao lado ou uma máquina lançadora importada, a uma fração do custo.
 
 ## Componentes
