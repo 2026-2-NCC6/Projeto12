@@ -121,17 +121,73 @@ Há também 4 pastas que seguem da seguinte forma:
 
 <b>🧑‍💻 src</b>: Pasta que contém o código fonte (frontend e backend).
 
-### 📥 Testar sem instalar nada
+## ▶️ Como gerar o APK e testar a aplicação
 
-Baixe o APK mais recente em
-[**executaveis**](https://github.com/2026-2-NCC6/Projeto12/src/executais)
-e instale no celular Android.
+O passo a passo abaixo leva do repositório até o app instalado no celular. O app já usa a API hospedada no Azure, então **não é preciso subir o backend** para testar.
 
-1. Ao abrir o arquivo, o Android vai pedir permissão para instalar de fonte
-   desconhecida — autorize o app que está fazendo a instalação (navegador ou
-   gerenciador de arquivos).
-2. Crie uma conta e faça login. O app já usa a API hospedada no Azure.
-3. Aproveite a experiência em uma sessão com o boneco interativo TOBIAS.
+### 1. Instalar as ferramentas
+
+1. **Git:** baixe e instale pelo [git-scm.com](https://git-scm.com/downloads).
+2. **Android Studio:** baixe e instale pelo [developer.android.com/studio](https://developer.android.com/studio). Ele já traz o Java (JDK) e o Android SDK. Abra-o uma vez e conclua o assistente de configuração inicial (*Standard*), que baixa o SDK.
+3. **Flutter SDK (versão 3.32 ou superior):** siga o [guia oficial de instalação](https://docs.flutter.dev/get-started/install) para o seu sistema. No Windows, extraia o Flutter em uma pasta sem espaços nem acentos (ex.: `C:\flutter`) e adicione `C:\flutter\bin` à variável de ambiente `Path`.
+4. Abra um **novo** terminal e aceite as licenças do Android:
+
+   ```bash
+   flutter doctor --android-licenses
+   ```
+
+5. Confira a instalação:
+
+   ```bash
+   flutter doctor
+   ```
+
+   Os itens **Flutter** e **Android toolchain** precisam aparecer com ✓. Se algum aparecer com ✗, o próprio `flutter doctor` indica o que falta.
+
+### 2. Clonar o repositório
+
+```bash
+git clone https://github.com/2026-2-NCC6/Projeto12.git
+cd Projeto12/src/entrega_2/mobile
+```
+
+### 3. Instalar as dependências do app
+
+```bash
+flutter pub get
+```
+
+### 4. Gerar o APK
+
+```bash
+flutter build apk --release
+```
+
+O primeiro build demora alguns minutos, porque o Gradle baixa as dependências do Android. Ao final aparece a mensagem `√ Built build\app\outputs\flutter-apk\app-release.apk`. O arquivo fica em:
+
+```
+src/entrega_2/mobile/build/app/outputs/flutter-apk/app-release.apk
+```
+
+### 5. Instalar no celular Android
+
+Escolha uma das formas:
+
+- **Copiando o arquivo:** envie o `app-release.apk` para o celular (cabo USB, Google Drive, e-mail etc.) e abra-o. O Android vai pedir permissão para instalar de fonte desconhecida: autorize o app que está fazendo a instalação (navegador ou gerenciador de arquivos).
+- **Direto pelo cabo USB:** no celular, ative as *Opções do desenvolvedor* (Configurações → Sobre o telefone → toque 7 vezes em "Número da versão") e ligue a **Depuração USB**. Conecte o cabo, aceite o pedido de autorização que aparece na tela do celular e rode:
+
+  ```bash
+  flutter install
+  ```
+
+  Também é possível rodar o app em modo de desenvolvimento com `flutter run`. Se o celular não aparecer em `flutter devices`, instale o driver USB do fabricante.
+
+### 6. Testar a aplicação
+
+1. Abra o app, crie uma conta e faça login. Na primeira requisição a API pode levar até ~30 s para responder, porque ela "dorme" quando fica ociosa.
+2. **Com o boneco TOBIAS:** ligue o dispositivo, ative o Bluetooth do celular e, na tela de **Pareamento**, conecte ao dispositivo `TOBIAS`. Faça a **calibração** (5 batidas), escolha um treino, inicie a sessão e acerte o boneco.
+3. **Sem o boneco:** na tela de **Pareamento**, toque em **"Usar simulador (sem dispositivo)"** para fazer uma sessão completa com batidas simuladas.
+4. Ao finalizar a sessão, confira o **resumo**, o **histórico** e o **ranking**.
 
 ## 📋 Licença/License
 <a href="https://github.com/2026-2-NCC6/Projeto12">TOBIAS - O Boneco Interativo</a> © 2026 by <a href="https://github.com/2026-2-NCC6/Projeto12">Guilherme de Lima Siqueira, Gabriel Carvalho Mota, Rodrigo Luiz Menezes dos Reis, Vitória Leticia Maciel da Silva.</a> is licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>
