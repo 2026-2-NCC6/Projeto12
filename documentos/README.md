@@ -65,14 +65,14 @@
 
 ### Disciplina 1 — Projeto Interdisciplinar: IoT e Robótica
 
- **Aluno(s) Responsável(veis)** | Rodrigo Luiz Menezes dos Reis |
+| **Aluno(s) Responsável(veis)** | Rodrigo Luiz Menezes dos Reis e Vitória Leticia Maciel da Silva |
 | :--- | :--- |
-| **Ferramenta utilizada** |  |
-| **Versão/modelo** |  |
-| **Disciplina / Trabalho** |  |
-| **Finalidade de uso** |  |
-| ***Prompts* principais utilizados** |  |
-| **Trechos ou entregas afetadas** |  |
+| **Ferramenta utilizada** | Claude (claude.ai), da Anthropic |
+| **Versão/modelo** | Claude Opus 5 |
+| **Disciplina / Trabalho** | Projeto Interdisciplinar — 6º CCOMP — Entrega 2: “Relatório de Evolução do Projeto Integrado — TOBIAS / Smart Tennis Arena”. |
+| **Finalidade de uso** | A ferramenta foi utilizada na produção do relatório em duas tarefas:<br>- Redação do documento. A partir do enunciado da NI2 e do estado real do projeto, a ferramenta organizou a estrutura do relatório dentro do limite de duas páginas e redigiu todas as seções: os avanços em firmware, backend e aplicativo desde a NI1.<br>- Formatação do arquivo em Word.<br>Os fatos relatados (o que foi construído, o que foi alterado e por quê) são de trabalho autoral. |
+| ***Prompts* principais utilizados** | “Pode me ajudar a fazer esse relatório?” — acompanhado do enunciado completo da NI2 e da instrução: “E deixe espaço no material em .docs para eu colocar foto de algumas evidencias que tenho salvas aq comigo como video/foto/print do app”. |
+| **Trechos ou entregas afetadas** | O documento inteiro: Seção 1 (Avanços realizados desde a NI1, nos três subitens de firmware, backend e aplicativo); Seção 2 (Alterações no planejamento — reescrita da fórmula de pontuação e retirada da parada segura); Seção 3 (Evidência do desenvolvimento, incluindo as duas saídas de produção e todas as legendas); e Seção 4 (Principal dificuldade técnica e próxima ação planejada). |
 
 ### Disciplina 2 — Sistemas Embarcados e Robótica
 
